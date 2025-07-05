@@ -1,0 +1,219 @@
+.camera-view {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: rgba(26, 26, 26, 0.95);
+  border-radius: 8px;
+  border: 1px solid #00ff00;
+  box-shadow: 0 4px 16px rgba(0, 255, 0, 0.3);
+  backdrop-filter: blur(10px);
+  overflow: hidden;
+}
+
+.video-container {
+  flex: 1;
+  position: relative;
+  background: #000;
+  border-radius: 6px;
+  margin: 10px;
+  overflow: hidden;
+  box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.5);
+}
+
+.video-feed {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.detection-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  border-radius: 8px;
+}
+
+.video-controls {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border-top: 1px solid #333;
+}
+
+.control-button {
+  background: rgba(42, 42, 42, 0.9);
+  border: 1px solid #444;
+  color: #00ff00;
+  padding: 8px 15px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(5px);
+  min-width: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.control-button:hover:not(:disabled) {
+  background: #00ff00;
+  color: #1a1a1a;
+  border-color: #00ff00;
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(0, 255, 0, 0.3);
+}
+
+.control-button:disabled {
+  background: rgba(26, 26, 26, 0.5);
+  border-color: #333;
+  color: #666;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.control-button.play {
+  background: rgba(0, 255, 0, 0.1);
+  border-color: #00ff00;
+}
+
+.control-button.pause {
+  background: rgba(255, 170, 0, 0.1);
+  border-color: #ffaa00;
+  color: #ffaa00;
+}
+
+.control-button.step {
+  background: rgba(0, 150, 255, 0.1);
+  border-color: #0096ff;
+  color: #0096ff;
+}
+
+.control-button.play:hover {
+  background: #00ff00;
+  color: #1a1a1a;
+}
+
+.control-button.pause:hover {
+  background: #ffaa00;
+  color: #1a1a1a;
+}
+
+.control-button.step:hover {
+  background: #0096ff;
+  color: #ffffff;
+}
+
+/* Nouvelle liste de vidéos */
+.video-list {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.video-list-item {
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 1px solid #444;
+  background: rgba(42, 42, 42, 0.7);
+  color: #fff;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s;
+  min-width: 120px;
+  box-shadow: none;
+}
+
+.video-list-item.selected,
+.video-list-item:focus {
+  border: 2px solid #00ff00;
+  background: rgba(0, 255, 0, 0.08);
+  color: #00ff00;
+  box-shadow: 0 0 10px #00ff00;
+}
+
+.video-list-item:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Style pour la liste déroulante de sélection des vidéos */
+select#video-select {
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 2px solid #00ff00;
+  background: rgba(42, 42, 42, 0.9);
+  color: #00ff00;
+  font-weight: 500;
+  font-size: 15px;
+  outline: none;
+  min-width: 160px;
+  margin-right: 12px;
+  transition: border 0.2s, box-shadow 0.2s;
+  box-shadow: 0 2px 8px rgba(0, 255, 0, 0.08);
+}
+
+select#video-select:focus {
+  border: 2px solid #00ff00;
+  box-shadow: 0 0 10px #00ff00;
+}
+
+select#video-select option {
+  background: #222;
+  color: #00ff00;
+  font-size: 15px;
+}
+
+label[for="video-select"] {
+  color: #00ff00;
+  font-weight: 600;
+  margin-right: 8px;
+  font-size: 15px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .video-container {
+    margin: 8px;
+  }
+  
+  .video-controls {
+    padding: 10px;
+    gap: 8px;
+  }
+  
+  .control-button {
+    padding: 6px 12px;
+    font-size: 11px;
+    min-width: 70px;
+  }
+}
+
+/* Animation pour les boutons */
+@keyframes buttonPulse {
+  0% {
+    box-shadow: 0 0 5px currentColor;
+  }
+  50% {
+    box-shadow: 0 0 15px currentColor;
+  }
+  100% {
+    box-shadow: 0 0 5px currentColor;
+  }
+}
+
+.control-button:not(:disabled):hover {
+  animation: buttonPulse 1s infinite;
+}
