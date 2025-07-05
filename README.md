@@ -251,9 +251,3 @@ La base de données SQLite est automatiquement créée dans `server/detection_hi
 
 Ce projet est sous licence MIT. Voir le fichier `LICENSE` pour plus de détails.
 
-## 📞 Support
-
-Pour toute question ou problème :
-- Ouvrir une issue sur GitHub
-- Consulter la documentation dans les dossiers `client/` et `server/`
-- Vérifier les logs de la console et du serveur 
