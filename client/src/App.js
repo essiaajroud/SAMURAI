@@ -179,11 +179,14 @@ function App() {
     try {
       const response = await fetch(`${API_BASE_URL}/detections/current`);
       if (response.ok) {
-        const detections = await response.json();
+        const data = await response.json();
+        // Extraire le tableau de détections de la réponse
+        const detections = data.detections || data || [];
         setCurrentDetections(detections);
       }
     } catch (error) {
       console.error('Erreur lors du chargement des détections courantes:', error);
+      setCurrentDetections([]);
     }
   }, [isConnected]);
 
@@ -206,14 +209,16 @@ function App() {
     if (isConnected && systemStatus === 'running') {
       loadCurrentDetections();
       loadPerformanceData();
+      loadDetectionHistory(); // Recharger l'historique aussi
       // Rafraîchir toutes les secondes
       const interval = setInterval(() => {
         loadCurrentDetections();
         loadPerformanceData();
+        loadDetectionHistory(); // Recharger l'historique aussi
       }, 1000);
       return () => clearInterval(interval);
     }
-  }, [isConnected, systemStatus, loadCurrentDetections, loadPerformanceData]);
+  }, [isConnected, systemStatus, loadCurrentDetections, loadPerformanceData, loadDetectionHistory]);
 
   // Supprimer la simulation locale des détections et performances
   useEffect(() => {
@@ -224,27 +229,68 @@ function App() {
     };
   }, [systemStatus, isConnected, cleanupOldData]);
 
-  const handleSystemToggle = () => {
-    setSystemStatus(prev => {
-      const newStatus = prev === 'running' ? 'stopped' : 'running';
+  const handleSystemToggle = async () => {
+    try {
+      const newStatus = systemStatus === 'running' ? 'stopped' : 'running';
+      
+      if (newStatus === 'running') {
+        // Démarrer le streaming
+        const response = await fetch(`${API_BASE_URL}/yolo/stream/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ video_path: 'videos/people.mp4' }) // Vidéo par défaut
+        });
+        
+        if (response.ok) {
+          setSystemStatus('running');
+          setIsPlaying(true);
+          setLogs(logs => [
+            {
+              timestamp: Date.now(),
+              level: 'INFO',
+              message: 'System started - Detection streaming activated'
+            },
+            ...logs
+          ]);
+        } else {
+          console.error('Failed to start streaming');
+        }
+      } else {
+        // Arrêter le streaming
+        const response = await fetch(`${API_BASE_URL}/yolo/stream/stop`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        if (response.ok) {
+          setSystemStatus('stopped');
+          setIsPlaying(false);
+          setLogs(logs => [
+            {
+              timestamp: Date.now(),
+              level: 'INFO',
+              message: 'System stopped - Detection streaming deactivated'
+            },
+            ...logs
+          ]);
+        } else {
+          console.error('Failed to stop streaming');
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling system:', error);
       setLogs(logs => [
         {
           timestamp: Date.now(),
-          level: 'INFO',
-          message: newStatus === 'running' ? 'System started' : 'System stopped'
+          level: 'ERROR',
+          message: 'Error toggling system: ' + error.message
         },
         ...logs
       ]);
-      return newStatus;
-    });
-    setIsPlaying(prev => !prev);
+    }
   };
 
-  // Convertir les trajectoires en format attendu par CameraView
-  const trajectories = Object.values(trajectoryHistory).map(trajectory => ({
-    id: trajectory.id,
-    points: trajectory.points.map(point => ({ x: point.x, y: point.y }))
-  }));
+
 
   return (
     <div className="app" style={appStyle}>
@@ -261,7 +307,6 @@ function App() {
               onPause={() => setIsPlaying(false)}
               onStep={() => {}}
               detections={currentDetections}
-              trajectories={trajectories}
             />
           </div>
           <div className="right-panel">

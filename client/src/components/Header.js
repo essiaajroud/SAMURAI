@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './Header.css';
 import PropTypes from 'prop-types';
+import logo from '../Assets/logo.png';
 
 const Header = ({ onSystemToggle, systemStatus, isConnected = false }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -32,7 +33,7 @@ const Header = ({ onSystemToggle, systemStatus, isConnected = false }) => {
   return (
     <header className="dashboard-header">
       <div className="header-left">
-        <img src="/logo.png" alt="Military Dashboard" className="logo" />
+        <img src={logo} alt="Military Dashboard" className="logo" />
         <h1>Military Detection System</h1>
       </div>
       <div className="header-center">

@@ -18,11 +18,14 @@ function useVideos() {
         const res = await fetch(`${API_BASE_URL}/yolo/videos`);
         const data = await res.json();
         if (data.videos) {
-          const videoNames = data.videos.map(v => v.replace('videos/', ''));
+          const videoNames = data.videos.map(v => {
+            // Supprimer le préfixe 'videos/' ou 'videos\' selon le système d'exploitation
+            return v.replace(/^videos[/\\]/, '');
+          });
           setVideos(videoNames);
         }
       } catch (err) {
-        setError('Erreur lors du chargement des vidéos');
+        setError('Error loading videos');
       }
       setLoading(false);
     };
@@ -32,14 +35,17 @@ function useVideos() {
   return { videos, loading, error };
 }
 
-// Hook personnalisé pour dessiner les détections et trajectoires sur le canvas
-function useDrawDetections(canvasRef, detections, trajectories) {
+// Hook personnalisé pour dessiner les détections sur le canvas
+function useDrawDetections(canvasRef, detections) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    detections.forEach(detection => {
+    
+    // S'assurer que detections est un tableau
+    const detectionsArray = Array.isArray(detections) ? detections : [];
+    detectionsArray.forEach(detection => {
       const { x, y, width, height, label, confidence } = detection;
       ctx.strokeStyle = '#00ff00';
       ctx.lineWidth = 2;
@@ -48,27 +54,13 @@ function useDrawDetections(canvasRef, detections, trajectories) {
       ctx.font = '14px Arial';
       ctx.fillText(`${label} (${(confidence * 100).toFixed(1)}%)`, x, y - 5);
     });
-    trajectories.forEach(trajectory => {
-      ctx.beginPath();
-      ctx.strokeStyle = '#ff0000';
-      ctx.lineWidth = 2;
-      trajectory.points.forEach((point, index) => {
-        if (index === 0) {
-          ctx.moveTo(point.x, point.y);
-        } else {
-          ctx.lineTo(point.x, point.y);
-        }
-      });
-      ctx.stroke();
-    });
-  }, [canvasRef, detections, trajectories]);
+  }, [canvasRef, detections]);
 }
 
 const CameraView = ({ 
   isPlaying, 
   onPause, 
   detections = [], 
-  trajectories = [],
   isConnected,
   systemStatus,
   setCurrentDetections
@@ -90,39 +82,61 @@ const CameraView = ({
   }, [videos, selectedVideo]);
 
   // Utilisation du hook pour dessiner les détections
-  useDrawDetections(canvasRef, [], []);
+  useDrawDetections(canvasRef, detections || []);
 
-  // Lancer la détection sur la vidéo sélectionnée
+  // Lancer/Arrêter la détection sur la vidéo sélectionnée
   const handleStartDetection = useCallback(async () => {
     if (!selectedVideo) return;
     setLoading(true);
     setStatus('');
+    
     try {
-      const res = await fetch(`${API_BASE_URL}/yolo/stream/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ video_path: selectedVideo })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setStatus('Détection démarrée !');
-        setIsDetectionStarted(true);
+      if (!isDetectionStarted) {
+        // Démarrer la détection
+        const res = await fetch(`${API_BASE_URL}/yolo/stream/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ video_path: `videos/${selectedVideo}` })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setStatus('Detection started!');
+          setIsDetectionStarted(true);
+        } else {
+          setStatus(data.error || 'Error starting detection');
+        }
       } else {
-        setStatus(data.error || 'Erreur lors du démarrage de la détection');
+        // Arrêter la détection
+        const res = await fetch(`${API_BASE_URL}/yolo/stream/stop`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        if (res.ok) {
+          setStatus('Detection stopped!');
+          setIsDetectionStarted(false);
+        } else {
+          setStatus('Error stopping detection');
+        }
       }
     } catch (err) {
-      setStatus('Erreur lors du démarrage de la détection');
+      setStatus('Error managing detection');
     }
     setLoading(false);
-  }, [selectedVideo]);
+  }, [selectedVideo, isDetectionStarted]);
 
   useEffect(() => {
     if (isConnected && systemStatus === 'running') {
       const interval = setInterval(async () => {
-        const res = await fetch(`${API_BASE_URL}/detections?limit=3`);
-        if (res.ok) {
-          const detections = await res.json();
-          setCurrentDetections(detections);
+        try {
+          const res = await fetch(`${API_BASE_URL}/detections/current`);
+          if (res.ok) {
+            const data = await res.json();
+            // Extraire le tableau de détections de la réponse
+            const detections = data.detections || data || [];
+            setCurrentDetections(detections);
+          }
+        } catch (error) {
+          console.error('Error retrieving detections:', error);
         }
       }, 1000);
       return () => clearInterval(interval);
@@ -132,28 +146,28 @@ const CameraView = ({
   return (
     <div className="camera-view">
       <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 0 }}>
-        <label htmlFor="video-select" style={{ marginLeft: 18, marginRight: 18 }}>Vidéo : </label>
+        <label htmlFor="video-select" style={{ marginLeft: 18, marginRight: 18 }}>Video: </label>
         <select
           id="video-select"
           value={selectedVideo}
           onChange={e => setSelectedVideo(e.target.value)}
           style={{ marginRight: 0 }}
-          aria-label="Sélection de la vidéo"
+          aria-label="Video selection"
         >
           {videos.map(video => (
             <option key={video} value={video}>{video}</option>
           ))}
         </select>
         <button
-          className="control-button play"
+          className={`control-button ${isDetectionStarted ? 'pause' : 'play'}`}
           onClick={handleStartDetection}
           disabled={loading || !selectedVideo}
           aria-busy={loading}
           style={{ marginLeft: 'auto', marginRight: 18 }}
         >
-          {loading ? 'Démarrage...' : 'Start Detection'}
+          {loading ? 'Loading...' : (isDetectionStarted ? '⏸️ Stop Detection' : '▶️ Start Detection')}
         </button>
-        {videosLoading && <span style={{ marginLeft: 12 }}>Chargement des vidéos...</span>}
+        {videosLoading && <span style={{ marginLeft: 12 }}>Loading videos...</span>}
         {videosError && <span style={{ marginLeft: 12, color: 'red' }}>{videosError}</span>}
         {status && <span style={{ marginLeft: 12, color: '#00ff00' }}>{status}</span>}
       </div>
@@ -161,7 +175,7 @@ const CameraView = ({
         {isDetectionStarted && (
           <img
             className="video-feed"
-            src={selectedVideo ? `http://localhost:5000/video_feed?video_path=videos/${selectedVideo.replace(/^videos[\\/]/, '')}` : undefined}
+            src={`http://localhost:5000/video_feed?video_path=videos/${selectedVideo}`}
             alt="Video stream"
             style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }}
           />
@@ -175,6 +189,7 @@ const CameraView = ({
         <button 
           className={`control-button ${isPlaying ? 'pause' : 'play'}`}
           onClick={onPause}
+          disabled={!isDetectionStarted}
         >
           {isPlaying ? '⏸️ Pause' : '▶️ Play'}
         </button>
@@ -188,7 +203,6 @@ CameraView.propTypes = {
   onPause: PropTypes.func.isRequired,
   onStep: PropTypes.func.isRequired,
   detections: PropTypes.array,
-  trajectories: PropTypes.array,
   isConnected: PropTypes.bool.isRequired,
   systemStatus: PropTypes.string.isRequired,
   setCurrentDetections: PropTypes.func.isRequired

@@ -211,6 +211,7 @@
   background: rgba(0, 0, 0, 0.3);
   border-radius: 6px;
   padding: 8px;
+  max-height: 400px;
 }
 
 .detections-table table {
@@ -241,6 +242,93 @@
 
 .detections-table tr:hover {
   background: rgba(0, 255, 0, 0.1);
+}
+
+/* Nouveaux styles pour l'historique */
+.no-data-message {
+  text-align: center;
+  padding: 40px 20px;
+  color: #888;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  margin: 10px 0;
+}
+
+.no-data-message p {
+  margin: 8px 0;
+  font-size: 13px;
+}
+
+.no-data-message p:first-child {
+  font-size: 16px;
+  color: #00ff00;
+  font-weight: bold;
+}
+
+.history-summary {
+  background: rgba(0, 255, 0, 0.1);
+  border: 1px solid #00ff00;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.history-summary span {
+  color: #00ff00;
+  font-weight: bold;
+  font-size: 13px;
+}
+
+/* Styles pour les badges de confiance */
+.confidence-badge {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: bold;
+  display: inline-block;
+  min-width: 40px;
+  text-align: center;
+}
+
+.confidence-badge.high {
+  background: rgba(0, 255, 0, 0.2);
+  color: #00ff00;
+  border: 1px solid #00ff00;
+}
+
+.confidence-badge.medium {
+  background: rgba(255, 165, 0, 0.2);
+  color: #ffa500;
+  border: 1px solid #ffa500;
+}
+
+.confidence-badge.low {
+  background: rgba(255, 0, 0, 0.2);
+  color: #ff4444;
+  border: 1px solid #ff4444;
+}
+
+/* Styles pour les lignes selon la confiance */
+.high-confidence {
+  background: rgba(0, 255, 0, 0.05);
+  border-left: 3px solid #00ff00;
+}
+
+.medium-confidence {
+  background: rgba(255, 165, 0, 0.05);
+  border-left: 3px solid #ffa500;
+}
+
+.low-confidence {
+  background: rgba(255, 0, 0, 0.05);
+  border-left: 3px solid #ff4444;
+}
+
+.high-confidence:hover,
+.medium-confidence:hover,
+.low-confidence:hover {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 /* History Styles */
@@ -295,6 +383,7 @@
   background: rgba(0, 0, 0, 0.3);
   border-radius: 6px;
   padding: 10px;
+  max-height: 400px;
 }
 
 .trajectories-list {

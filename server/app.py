@@ -96,21 +96,59 @@ class TrajectoryPoint(db.Model):
 
 # Fonction de callback pour les détections YOLO
 def save_yolo_detection(detection_data):
-    """Sauvegarde une détection YOLO dans la base de données"""
+    """Sauvegarde une détection YOLO dans la base de données de manière dynamique"""
     try:
         with app.app_context():
+            # Calculer la vitesse et distance si possible
+            speed = detection_data.get('speed')
+            distance = detection_data.get('distance')
+            
+            # Créer la détection
             detection = Detection(
                 object_id=detection_data['id'],
                 label=detection_data['label'],
                 confidence=detection_data['confidence'],
                 x=detection_data['x'],
                 y=detection_data['y'],
-                history_id=f"yolo_{uuid.uuid4()}"  # Utilisation d'un UUID unique
+                speed=speed,
+                distance=distance,
+                history_id=f"yolo_{uuid.uuid4()}_{detection_data.get('frame_number', 0)}"
             )
             db.session.add(detection)
+            
+            # Mettre à jour ou créer la trajectoire dynamiquement
+            trajectory = Trajectory.query.filter_by(object_id=detection_data['id']).first()
+            if trajectory:
+                # Mettre à jour la trajectoire existante
+                trajectory.last_seen = datetime.now(timezone.utc)
+                trajectory.is_active = True
+            else:
+                # Créer une nouvelle trajectoire
+                trajectory = Trajectory(
+                    object_id=detection_data['id'],
+                    label=detection_data['label']
+                )
+                db.session.add(trajectory)
+                db.session.flush()  # Pour obtenir l'ID de la trajectoire
+            
+            # Ajouter le point de trajectoire
+            trajectory_point = TrajectoryPoint(
+                trajectory_id=trajectory.id,
+                x=detection_data['x'],
+                y=detection_data['y'],
+                speed=speed,
+                distance=distance
+            )
+            db.session.add(trajectory_point)
+            
             db.session.commit()
+            
+            # Log pour debug
+            print(f"✅ Détection sauvegardée: {detection_data['label']} (conf: {detection_data['confidence']:.2f}) à ({detection_data['x']:.1f}, {detection_data['y']:.1f})")
+            
     except Exception as e:
         print(f"❌ Erreur lors de la sauvegarde de la détection: {e}")
+        db.session.rollback()
 
 # Configurer le callback si YOLO est disponible
 if YOLO_AVAILABLE:
@@ -295,8 +333,66 @@ def cleanup_old_data():
         
         return jsonify({
             'message': 'Cleanup completed',
-            'deletedDetections': deleted_detections,
-            'inactiveTrajectories': inactive_trajectories
+            'deleted_detections': deleted_detections,
+            'inactive_trajectories': inactive_trajectories
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/cleanup/auto', methods=['POST'])
+def auto_cleanup():
+    """
+    Nettoyage automatique intelligent des données.
+    Supprime les données anciennes et optimise la base de données.
+    """
+    try:
+        now = datetime.now(timezone.utc)
+        
+        # 1. Nettoyer les détections très anciennes (plus de 7 jours)
+        week_ago = now - timedelta(days=7)
+        old_detections_deleted = Detection.query.filter(Detection.timestamp < week_ago).delete()
+        
+        # 2. Nettoyer les détections de faible confiance anciennes (plus de 24h)
+        day_ago = now - timedelta(hours=24)
+        low_confidence_deleted = Detection.query.filter(
+            Detection.timestamp < day_ago,
+            Detection.confidence < 0.3
+        ).delete()
+        
+        # 3. Marquer les trajectoires inactives (pas de détection depuis 1 heure)
+        hour_ago = now - timedelta(hours=1)
+        inactive_trajectories = Trajectory.query.filter(
+            Trajectory.last_seen < hour_ago,
+            Trajectory.is_active == True
+        ).update({'is_active': False})
+        
+        # 4. Nettoyer les points de trajectoire très anciens (plus de 3 jours)
+        three_days_ago = now - timedelta(days=3)
+        old_trajectory_points = TrajectoryPoint.query.filter(
+            TrajectoryPoint.timestamp < three_days_ago
+        ).delete()
+        
+        db.session.commit()
+        
+        # 5. Calculer les statistiques après nettoyage
+        total_detections = Detection.query.count()
+        total_trajectories = Trajectory.query.count()
+        active_trajectories = Trajectory.query.filter_by(is_active=True).count()
+        
+        return jsonify({
+            'message': 'Auto cleanup completed successfully',
+            'cleanup_results': {
+                'old_detections_deleted': old_detections_deleted,
+                'low_confidence_deleted': low_confidence_deleted,
+                'trajectories_marked_inactive': inactive_trajectories,
+                'old_trajectory_points_deleted': old_trajectory_points
+            },
+            'current_stats': {
+                'total_detections': total_detections,
+                'total_trajectories': total_trajectories,
+                'active_trajectories': active_trajectories
+            },
+            'cleanup_timestamp': now.isoformat()
         })
         
     except Exception as e:
@@ -553,6 +649,9 @@ def upload_model():
 # Route pour servir les vidéos statiques
 @app.route('/videos/<path:filename>')
 def serve_video(filename):
+    # Optionnel : forcer le bon mimetype pour mp4
+    if filename.lower().endswith('.mp4'):
+        return send_from_directory('videos', filename, mimetype='video/mp4')
     return send_from_directory('videos', filename)
 
 @app.route('/video_feed')
@@ -560,6 +659,11 @@ def video_feed():
     video_path = request.args.get('video_path')
     if not video_path:
         return "No video_path provided", 400
+    
+    # Vérifier si le streaming est actif
+    if not detector.is_running:
+        return "Streaming not active", 400
+    
     return Response(
         detector.generate_stream_frames(video_path),
         mimetype='multipart/x-mixed-replace; boundary=frame'
@@ -603,40 +707,168 @@ def get_performance():
         "objectCount": object_count
     })
 
+@app.route('/api/statistics/realtime', methods=['GET'])
+def get_realtime_statistics():
+    """
+    Retourne des statistiques en temps réel pour le dashboard.
+    Version dynamique avec calculs en temps réel.
+    """
+    try:
+        now = datetime.now(timezone.utc)
+        
+        # Fenêtres temporelles pour les statistiques
+        windows = {
+            'last_second': now - timedelta(seconds=1),
+            'last_minute': now - timedelta(minutes=1),
+            'last_5_minutes': now - timedelta(minutes=5),
+            'last_hour': now - timedelta(hours=1),
+            'last_24h': now - timedelta(hours=24)
+        }
+        
+        # Calculer les statistiques pour chaque fenêtre
+        stats = {}
+        for window_name, time_limit in windows.items():
+            detections = Detection.query.filter(Detection.timestamp >= time_limit).all()
+            
+            if detections:
+                # Statistiques de base
+                count = len(detections)
+                avg_confidence = sum(d.confidence for d in detections) / count
+                
+                # Objets uniques
+                unique_objects = len(set(d.object_id for d in detections))
+                
+                # Classes détectées
+                classes = {}
+                for d in detections:
+                    classes[d.label] = classes.get(d.label, 0) + 1
+                
+                # Vitesse moyenne (si disponible)
+                speeds = [d.speed for d in detections if d.speed is not None]
+                avg_speed = sum(speeds) / len(speeds) if speeds else 0
+                
+                stats[window_name] = {
+                    'detection_count': count,
+                    'unique_objects': unique_objects,
+                    'avg_confidence': avg_confidence,
+                    'avg_speed': avg_speed,
+                    'classes': classes,
+                    'most_common_class': max(classes.items(), key=lambda x: x[1])[0] if classes else None
+                }
+            else:
+                stats[window_name] = {
+                    'detection_count': 0,
+                    'unique_objects': 0,
+                    'avg_confidence': 0,
+                    'avg_speed': 0,
+                    'classes': {},
+                    'most_common_class': None
+                }
+        
+        # Statistiques globales
+        total_detections = Detection.query.count()
+        total_trajectories = Trajectory.query.count()
+        active_trajectories = Trajectory.query.filter_by(is_active=True).count()
+        
+        # Trajectoires récentes (créées dans la dernière heure)
+        recent_trajectories = Trajectory.query.filter(
+            Trajectory.start_time >= now - timedelta(hours=1)
+        ).count()
+        
+        response_data = {
+            'windows': stats,
+            'global': {
+                'total_detections': total_detections,
+                'total_trajectories': total_trajectories,
+                'active_trajectories': active_trajectories,
+                'recent_trajectories': recent_trajectories
+            },
+            'metadata': {
+                'query_timestamp': now.isoformat(),
+                'is_dynamic': True,
+                'system_status': 'running' if detector.is_running else 'stopped'
+            }
+        }
+        
+        return jsonify(response_data)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
 @app.route('/api/detections/current', methods=['GET'])
 def get_current_detections():
     """
     Retourne les détections les plus récentes pour chaque objet (par object_id).
+    Version dynamique avec filtrage en temps réel.
     """
-    # Pour chaque object_id, on prend la détection la plus récente
-    subquery = (
-        db.session.query(
-            Detection.object_id,
-            db.func.max(Detection.timestamp).label('max_timestamp')
+    try:
+        # Paramètres de filtrage dynamiques
+        limit = int(request.args.get('limit', 10))
+        confidence_threshold = float(request.args.get('confidence', 0.0))
+        time_window = int(request.args.get('time_window', 5))  # Détections des dernières X secondes
+        
+        # Calculer la fenêtre temporelle
+        now = datetime.now(timezone.utc)
+        time_limit = now - timedelta(seconds=time_window)
+        
+        # Pour chaque object_id, on prend la détection la plus récente dans la fenêtre temporelle
+        subquery = (
+            db.session.query(
+                Detection.object_id,
+                db.func.max(Detection.timestamp).label('max_timestamp')
+            )
+            .filter(Detection.timestamp >= time_limit)
+            .group_by(Detection.object_id)
+            .subquery()
         )
-        .group_by(Detection.object_id)
-        .subquery()
-    )
 
-    detections = (
-        db.session.query(Detection)
-        .join(subquery, (Detection.object_id == subquery.c.object_id) & (Detection.timestamp == subquery.c.max_timestamp))
-        .all()
-    )
+        query = (
+            db.session.query(Detection)
+            .join(subquery, (Detection.object_id == subquery.c.object_id) & (Detection.timestamp == subquery.c.max_timestamp))
+        )
+        
+        # Appliquer les filtres
+        if confidence_threshold > 0:
+            query = query.filter(Detection.confidence >= confidence_threshold)
+        
+        # Limiter le nombre de résultats
+        detections = query.order_by(Detection.timestamp.desc()).limit(limit).all()
 
-    # Adapter le format du timestamp pour le frontend (en ms depuis epoch)
-    def detection_to_dict_with_epoch(d):
-        dct = d.to_dict()
-        try:
-            dt = d.timestamp
-            if isinstance(dt, str):
-                dt = datetime.fromisoformat(dt)
-            dct['timestamp'] = int(dt.timestamp() * 1000)
-        except Exception:
-            dct['timestamp'] = 0
-        return dct
+        # Adapter le format du timestamp pour le frontend (en ms depuis epoch)
+        def detection_to_dict_with_epoch(d):
+            dct = d.to_dict()
+            try:
+                dt = d.timestamp
+                if isinstance(dt, str):
+                    dt = datetime.fromisoformat(dt)
+                dct['timestamp'] = int(dt.timestamp() * 1000)
+                # Ajouter des métadonnées dynamiques
+                dct['age_seconds'] = (now - dt).total_seconds()
+                dct['is_recent'] = dct['age_seconds'] <= 2  # Détection récente (< 2 secondes)
+            except Exception:
+                dct['timestamp'] = 0
+                dct['age_seconds'] = 0
+                dct['is_recent'] = False
+            return dct
 
-    return jsonify([detection_to_dict_with_epoch(d) for d in detections])
+        result = [detection_to_dict_with_epoch(d) for d in detections]
+        
+        # Ajouter des métadonnées sur la requête
+        response_data = {
+            'detections': result,
+            'metadata': {
+                'total_detections': len(result),
+                'time_window_seconds': time_window,
+                'confidence_threshold': confidence_threshold,
+                'query_timestamp': now.isoformat(),
+                'is_dynamic': True
+            }
+        }
+        
+        return jsonify(response_data)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

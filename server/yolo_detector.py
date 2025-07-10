@@ -188,6 +188,7 @@ class YOLODetector:
             
             self.is_running = True
             self.current_video = video_path
+            print(f"🎬 Streaming démarré pour: {video_path}")
             
             while self.is_running:
                 ret, frame = cap.read()
@@ -240,12 +241,15 @@ class YOLODetector:
         finally:
             self.is_running = False
             self.current_video = None
+            print("🛑 Streaming terminé")
     
     def start_streaming(self, video_path):
         """Démarre le streaming d'une vidéo dans un thread séparé"""
         if self.is_running:
+            print("🔄 Arrêt du streaming précédent...")
             self.stop_streaming()
         
+        print(f"▶️ Démarrage du streaming YOLO avec la vidéo: {video_path}")
         thread = threading.Thread(target=self.process_video_stream, args=(video_path,))
         thread.daemon = True
         thread.start()
@@ -253,7 +257,10 @@ class YOLODetector:
     
     def stop_streaming(self):
         """Arrête le streaming"""
+        print("🛑 Arrêt du streaming YOLO...")
         self.is_running = False
+        self.current_video = None
+        print("✅ Streaming YOLO arrêté")
     
     def get_available_videos(self):
         """Retourne la liste des vidéos disponibles"""
@@ -286,6 +293,9 @@ class YOLODetector:
     def generate_stream_frames(self, video_path):
         import cv2
         import os
+        from datetime import datetime
+        import uuid
+        
         if not os.path.exists(video_path):
             print(f"❌ Vidéo non trouvée: {video_path}")
             return
@@ -298,14 +308,21 @@ class YOLODetector:
             print(f"❌ Impossible d'ouvrir la vidéo: {video_path}")
             return
 
-        while True:
+        frame_count = 0
+        while self.is_running:  # Vérifier le statut du streaming
             ret, frame = cap.read()
             if not ret:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                frame_count = 0
                 continue
 
-            # Détection
+            # Détection seulement si le streaming est actif
+            if not self.is_running:
+                break
+                
             results = self.model(frame, conf=self.confidence_threshold, verbose=False)
+            detections_in_frame = []
+            
             for result in results:
                 boxes = result.boxes
                 if boxes is not None:
@@ -314,15 +331,46 @@ class YOLODetector:
                         cls = int(box.cls[0].cpu().numpy())
                         conf = float(box.conf[0].cpu().numpy())
                         class_name = result.names[cls]
+                        
+                        # Dessiner sur le frame
                         cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0,255,0), 2)
                         cv2.putText(frame, f"{class_name} {conf:.2f}", (int(x1), int(y1)-10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+                        
+                        # Préparer les données de détection pour sauvegarde
+                        center_x = (x1 + x2) / 2
+                        center_y = (y1 + y2) / 2
+                        
+                        detection_data = {
+                            'id': frame_count * 1000 + len(detections_in_frame),  # ID unique basé sur frame
+                            'label': class_name,
+                            'confidence': conf,
+                            'x': center_x,
+                            'y': center_y,
+                            'bbox': [int(x1), int(y1), int(x2), int(y2)],
+                            'timestamp': datetime.now().isoformat(),
+                            'frame_number': frame_count
+                        }
+                        
+                        detections_in_frame.append(detection_data)
+            
+            # Sauvegarder les détections en temps réel via callback seulement si le streaming est actif
+            if self.is_running and self.detection_callback and detections_in_frame:
+                for detection in detections_in_frame:
+                    try:
+                        self.detection_callback(detection)
+                    except Exception as e:
+                        print(f"❌ Erreur lors de la sauvegarde de la détection: {e}")
 
             # Encodage JPEG
             ret2, jpeg = cv2.imencode('.jpg', frame)
             if not ret2:
                 continue
+                
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
+            
+            frame_count += 1
+            
         cap.release()
 
 # Instance globale du détecteur
