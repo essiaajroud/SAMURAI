@@ -1,0 +1,32 @@
+# Environnement virtuel
+venv/
+.venv/
+env/
+server/venv/
+
+# Modèles et fichiers IA
+*.onnx
+*.pt
+*.pkl
+*.ckpt
+*.h5
+
+# Fichiers lourds/binaire
+*.dll
+*.lib
+*.pyd
+*.mp4
+*.avi
+*.mov
+
+# Fichiers SQLite
+*.db
+
+# Cache et logs
+__pycache__/
+*.log
+
+# Node.js
+node_modules/
+dist/
+build/
