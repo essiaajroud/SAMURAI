@@ -1,42 +1,40 @@
- import React, { useState, useMemo } from 'react';
+// PerformancePanel.js - Shows system performance, analytics, and logs
+// Provides graphs, historical stats, and system log display
+import React, { useState, useMemo } from 'react';
 import './PerformancePanel.css';
 import PropTypes from 'prop-types';
 
-// Hook pour calculer les statistiques d'historique
+// Custom hook to compute detection history statistics
 function useHistoryStats(detectionHistory) {
   return useMemo(() => {
     const now = Date.now();
     const oneHourAgo = now - (60 * 60 * 1000);
     const sixHoursAgo = now - (6 * 60 * 60 * 1000);
     const oneDayAgo = now - (24 * 60 * 60 * 1000);
-
-    // Convertir les timestamps ISO en millisecondes pour la comparaison
+    // Filter detections by time
     const hourlyDetections = detectionHistory.filter(d => {
       const timestampMs = typeof d.timestamp === 'string' 
         ? new Date(d.timestamp).getTime() 
         : d.timestamp;
       return timestampMs > oneHourAgo;
     });
-    
     const sixHourDetections = detectionHistory.filter(d => {
       const timestampMs = typeof d.timestamp === 'string' 
         ? new Date(d.timestamp).getTime() 
         : d.timestamp;
       return timestampMs > sixHoursAgo;
     });
-    
     const dailyDetections = detectionHistory.filter(d => {
       const timestampMs = typeof d.timestamp === 'string' 
         ? new Date(d.timestamp).getTime() 
         : d.timestamp;
       return timestampMs > oneDayAgo;
     });
-
+    // Unique object count and average confidence
     const uniqueObjects = new Set(detectionHistory.map(d => d.id)).size;
     const avgConfidence = detectionHistory.length > 0 
       ? detectionHistory.reduce((acc, d) => acc + d.confidence, 0) / detectionHistory.length 
       : 0;
-
     return {
       hourlyCount: hourlyDetections.length,
       sixHourCount: sixHourDetections.length,
@@ -48,18 +46,19 @@ function useHistoryStats(detectionHistory) {
   }, [detectionHistory]);
 }
 
+// Main PerformancePanel component
 const PerformancePanel = ({ fps, inferenceTime, objectCount, logs = [], detectionHistory = [], isConnected = false }) => {
   const [selectedTab, setSelectedTab] = useState('graphs');
-
-  // Utilisation du hook pour les stats
+  // Use custom hook for stats
   const historyStats = useHistoryStats(detectionHistory);
 
+  // --- Render ---
   return (
     <div className="performance-panel">
+      {/* Panel header and tabs */}
       <div className="panel-header">
         <div className="header-top">
           <h2>Performance & Analytics</h2>
-          
         </div>
         <div className="panel-tabs">
           <button
@@ -85,10 +84,11 @@ const PerformancePanel = ({ fps, inferenceTime, objectCount, logs = [], detectio
           </button>
         </div>
       </div>
-
+      {/* Panel content for graphs, analytics, and logs */}
       <div className="panel-content">
         {selectedTab === 'graphs' ? (
           <div className="graphs-container">
+            {/* FPS graph */}
             <div className="graph-card">
               <h3>FPS</h3>
               <div className="graph-value">{fps.toFixed(1)}</div>
@@ -96,11 +96,11 @@ const PerformancePanel = ({ fps, inferenceTime, objectCount, logs = [], detectio
                 <div 
                   className="graph-bar-fill"
                   style={{ width: `${Math.min((fps / 30) * 100, 100)}%` }}
-                  aria-label="Barre de FPS"
+                  aria-label="FPS bar"
                 />
               </div>
             </div>
-
+            {/* Inference time graph */}
             <div className="graph-card">
               <h3>Inference Time</h3>
               <div className="graph-value">{inferenceTime.toFixed(1)}ms</div>
@@ -111,11 +111,11 @@ const PerformancePanel = ({ fps, inferenceTime, objectCount, logs = [], detectio
                     width: `${Math.min((inferenceTime / 100) * 100, 100)}%`,
                     backgroundColor: inferenceTime > 50 ? '#ff4444' : '#00ff00'
                   }}
-                  aria-label="Barre de temps d'inférence"
+                  aria-label="Inference time bar"
                 />
               </div>
             </div>
-
+            {/* Object count graph */}
             <div className="graph-card">
               <h3>Objects Detected</h3>
               <div className="graph-value">{objectCount}</div>
@@ -123,11 +123,11 @@ const PerformancePanel = ({ fps, inferenceTime, objectCount, logs = [], detectio
                 <div 
                   className="graph-bar-fill"
                   style={{ width: `${Math.min((objectCount / 10) * 100, 100)}%` }}
-                  aria-label="Barre d'objets détectés"
+                  aria-label="Objects detected bar"
                 />
               </div>
             </div>
-
+            {/* Total history graph */}
             <div className="graph-card">
               <h3>Total History</h3>
               <div className="graph-value">{historyStats.totalDetections}</div>
@@ -135,57 +135,37 @@ const PerformancePanel = ({ fps, inferenceTime, objectCount, logs = [], detectio
                 <div 
                   className="graph-bar-fill"
                   style={{ width: `${Math.min((historyStats.totalDetections / 1000) * 100, 100)}%` }}
-                  aria-label="Barre d'historique total"
+                  aria-label="Total history bar"
                 />
               </div>
             </div>
           </div>
         ) : selectedTab === 'history' ? (
           <div className="history-analytics">
+            {/* Connection warning if backend is not connected */}
             {!isConnected && (
               <div className="connection-warning">
                 <p>⚠️ Backend not connected. Historical analytics may be incomplete.</p>
               </div>
             )}
             <div className="analytics-grid">
-              <div className="analytics-card">
-                <h4>Last Hour</h4>
-                <div className="analytics-value">{historyStats.hourlyCount}</div>
-                <div className="analytics-label">detections</div>
-              </div>
-              
-              <div className="analytics-card">
-                <h4>Last 6 Hours</h4>
-                <div className="analytics-value">{historyStats.sixHourCount}</div>
-                <div className="analytics-label">detections</div>
-              </div>
-              
-              <div className="analytics-card">
-                <h4>Last 24 Hours</h4>
-                <div className="analytics-value">{historyStats.dailyCount}</div>
-                <div className="analytics-label">detections</div>
-              </div>
-              
+             
               <div className="analytics-card">
                 <h4>Unique Objects</h4>
                 <div className="analytics-value">{historyStats.uniqueObjects}</div>
                 <div className="analytics-label">tracked</div>
               </div>
-              
               <div className="analytics-card">
                 <h4>Avg Confidence</h4>
                 <div className="analytics-value">{historyStats.avgConfidence.toFixed(1)}%</div>
                 <div className="analytics-label">overall</div>
               </div>
-              
               <div className="analytics-card">
                 <h4>Total Detections</h4>
                 <div className="analytics-value">{historyStats.totalDetections}</div>
                 <div className="analytics-label">all time</div>
               </div>
             </div>
-            
-
           </div>
         ) : (
           <div className="system-logs-panel">
@@ -198,7 +178,6 @@ const PerformancePanel = ({ fps, inferenceTime, objectCount, logs = [], detectio
                   Backend {isConnected ? 'connected' : 'not connected'}
                 </span>
               </li>
-              
               {/* System status and control messages */}
               {logs && logs.length > 0 && logs
                 .filter(log => {
@@ -229,11 +208,10 @@ const PerformancePanel = ({ fps, inferenceTime, objectCount, logs = [], detectio
                     </li>
                   );
                 })}
-              
               {/* Low confidence detections as warnings */}
               {detectionHistory && detectionHistory.length > 0 && detectionHistory
                 .filter(detection => detection.confidence < 0.5)
-                .slice(-20) // Keep last 20 low confidence detections
+                .slice(-20)
                 .map((detection, idx) => (
                   <li key={`low-conf-${idx}`} className="log-entry warning">
                     <span className="log-timestamp">
@@ -247,8 +225,7 @@ const PerformancePanel = ({ fps, inferenceTime, objectCount, logs = [], detectio
                     </span>
                   </li>
                 ))}
-              
-              {/* Other system logs */}
+              {/* Other system logs (errors, backend, etc.) */}
               {logs && logs.length > 0 && logs
                 .filter(log => {
                   const msg = (log.message || '').toLowerCase();

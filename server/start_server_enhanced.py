@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Script de démarrage amélioré pour le serveur de détection militaire.
-Démarre tous les services dynamiques et la maintenance automatique.
+start_server_enhanced.py - Enhanced startup script for the military detection server.
+Starts all dynamic services and automatic maintenance.
 """
 
 import os
@@ -13,15 +13,15 @@ import signal
 import logging
 from datetime import datetime
 
-# Ajouter le répertoire courant au path
+# Add current directory to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from config import get_config
 
-# Configuration
+# --- Load Configuration ---
 config = get_config()
 
-# Configuration du logging
+# --- Logging Configuration ---
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -34,180 +34,154 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class ServerManager:
-    """Gestionnaire du serveur avec tous les services dynamiques"""
-    
+    """Server manager for all dynamic services."""
     def __init__(self):
         self.processes = {}
         self.running = False
-        
+
     def start_maintenance_service(self):
-        """Démarrer le service de maintenance automatique"""
+        """Start the automatic maintenance service."""
         try:
-            logger.info("🔧 Démarrage du service de maintenance automatique...")
-            
-            # Démarrer le script de maintenance en arrière-plan
+            logger.info("🔧 Starting automatic maintenance service...")
+            # Start the maintenance script in the background
             maintenance_script = os.path.join(os.path.dirname(__file__), 'maintenance.py')
             if os.path.exists(maintenance_script):
                 process = subprocess.Popen([
                     sys.executable, maintenance_script
                 ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                
                 self.processes['maintenance'] = process
-                logger.info("✅ Service de maintenance démarré")
+                logger.info("✅ Maintenance service started.")
             else:
-                logger.warning("⚠️ Script de maintenance non trouvé")
-                
+                logger.warning("⚠️ Maintenance script not found.")
         except Exception as e:
-            logger.error(f"❌ Erreur lors du démarrage du service de maintenance: {e}")
-    
+            logger.error(f"❌ Error starting maintenance service: {e}")
+
     def start_flask_server(self):
-        """Démarrer le serveur Flask principal"""
+        """Start the main Flask server."""
         try:
-            logger.info("🚀 Démarrage du serveur Flask principal...")
-            
-            # Vérifier que le modèle YOLO est disponible
+            logger.info("🚀 Starting main Flask server...")
+            # Check if YOLO model is available
             if not os.path.exists(config.YOLO_MODEL_PATH):
-                logger.warning(f"⚠️ Modèle YOLO non trouvé: {config.YOLO_MODEL_PATH}")
-                logger.info("📥 Veuillez placer un modèle YOLO dans le dossier 'models/'")
-            
-            # Vérifier le dossier des vidéos
+                logger.warning(f"⚠️ YOLO model not found: {config.YOLO_MODEL_PATH}")
+                logger.info("📥 Please place a YOLO model in the 'models/' folder.")
+            # Check videos directory
             if not os.path.exists(config.YOLO_VIDEOS_DIR):
                 os.makedirs(config.YOLO_VIDEOS_DIR, exist_ok=True)
-                logger.info(f"📁 Dossier vidéos créé: {config.YOLO_VIDEOS_DIR}")
-            
-            # Démarrer le serveur Flask
+                logger.info(f"📁 Videos directory created: {config.YOLO_VIDEOS_DIR}")
+            # Start Flask server
             from app import app
             app.run(
                 host=config.HOST,
                 port=config.PORT,
                 debug=config.DEBUG,
-                use_reloader=False  # Éviter les conflits avec le gestionnaire
+                use_reloader=False  # Avoid conflicts with the manager
             )
-            
         except Exception as e:
-            logger.error(f"❌ Erreur lors du démarrage du serveur Flask: {e}")
-    
+            logger.error(f"❌ Error starting Flask server: {e}")
+
     def check_dependencies(self):
-        """Vérifier les dépendances requises"""
-        logger.info("🔍 Vérification des dépendances...")
-        
+        """Check for required dependencies."""
+        logger.info("🔍 Checking dependencies...")
         required_packages = [
             'flask', 'flask_cors', 'flask_sqlalchemy',
             'opencv-python', 'torch', 'torchvision',
             'numpy', 'pillow'
         ]
-        
         missing_packages = []
         for package in required_packages:
             try:
                 __import__(package.replace('-', '_'))
             except ImportError:
                 missing_packages.append(package)
-        
         if missing_packages:
-            logger.error(f"❌ Packages manquants: {', '.join(missing_packages)}")
-            logger.info("💡 Installez-les avec: pip install " + " ".join(missing_packages))
+            logger.error(f"❌ Missing packages: {', '.join(missing_packages)}")
+            logger.info("💡 Install them with: pip install " + " ".join(missing_packages))
             return False
-        
-        logger.info("✅ Toutes les dépendances sont installées")
+        logger.info("✅ All dependencies are installed.")
         return True
-    
+
     def initialize_database(self):
-        """Initialiser la base de données"""
+        """Initialize the database."""
         try:
-            logger.info("🗄️ Initialisation de la base de données...")
-            
-            # Créer le dossier instance s'il n'existe pas
+            logger.info("🗄️ Initializing the database...")
+            # Create instance folder if it doesn't exist
             os.makedirs('instance', exist_ok=True)
-            
-            # Importer et initialiser la base de données
+            # Import and initialize the database
             from app import db
             with app.app_context():
                 db.create_all()
-            
-            logger.info("✅ Base de données initialisée")
+            logger.info("✅ Database initialized.")
             return True
-            
         except Exception as e:
-            logger.error(f"❌ Erreur lors de l'initialisation de la base: {e}")
+            logger.error(f"❌ Error initializing database: {e}")
             return False
-    
+
     def start(self):
-        """Démarrer tous les services"""
-        logger.info("🎯 Démarrage du système de détection militaire")
+        """Start all services."""
+        logger.info("🎯 Starting military detection system")
         logger.info(f"📋 Configuration: {config.__name__}")
-        logger.info(f"🌐 Serveur: http://{config.HOST}:{config.PORT}")
-        
-        # Vérifier les dépendances
+        logger.info(f"🌐 Server: http://{config.HOST}:{config.PORT}")
+        # Check dependencies
         if not self.check_dependencies():
-            logger.error("❌ Arrêt du démarrage - dépendances manquantes")
+            logger.error("❌ Startup aborted - missing dependencies.")
             return False
-        
-        # Initialiser la base de données
+        # Initialize database
         if not self.initialize_database():
-            logger.error("❌ Arrêt du démarrage - erreur de base de données")
+            logger.error("❌ Startup aborted - database error.")
             return False
-        
         self.running = True
-        
-        # Démarrer le service de maintenance dans un thread séparé
+        # Start maintenance service in a separate thread
         maintenance_thread = threading.Thread(target=self.start_maintenance_service)
         maintenance_thread.daemon = True
         maintenance_thread.start()
-        
-        # Attendre un peu que la maintenance démarre
+        # Wait a bit for maintenance to start
         time.sleep(2)
-        
-        # Démarrer le serveur Flask principal
+        # Start the main Flask server
         try:
             self.start_flask_server()
         except KeyboardInterrupt:
-            logger.info("🛑 Arrêt demandé par l'utilisateur")
+            logger.info("🛑 Shutdown requested by user.")
         except Exception as e:
-            logger.error(f"❌ Erreur fatale: {e}")
+            logger.error(f"❌ Fatal error: {e}")
         finally:
             self.stop()
-    
+
     def stop(self):
-        """Arrêter tous les services"""
-        logger.info("🛑 Arrêt de tous les services...")
+        """Stop all services."""
+        logger.info("🛑 Stopping all services...")
         self.running = False
-        
-        # Arrêter tous les processus
+        # Stop all processes
         for name, process in self.processes.items():
             try:
-                logger.info(f"🛑 Arrêt du service: {name}")
+                logger.info(f"🛑 Stopping service: {name}")
                 process.terminate()
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                logger.warning(f"⚠️ Force arrêt du service: {name}")
+                logger.warning(f"⚠️ Force stopping service: {name}")
                 process.kill()
             except Exception as e:
-                logger.error(f"❌ Erreur lors de l'arrêt de {name}: {e}")
-        
-        logger.info("✅ Tous les services arrêtés")
+                logger.error(f"❌ Error stopping {name}: {e}")
+        logger.info("✅ All services stopped.")
 
 def signal_handler(signum, frame):
-    """Gestionnaire de signaux pour un arrêt propre"""
-    logger.info(f"📡 Signal reçu: {signum}")
+    """Signal handler for graceful shutdown."""
+    logger.info(f"📣 Signal received: {signum}")
     if hasattr(signal_handler, 'server_manager'):
         signal_handler.server_manager.stop()
     sys.exit(0)
 
 def main():
-    """Fonction principale"""
-    # Enregistrer les gestionnaires de signaux
+    """Main function."""
+    # Register signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    
-    # Créer et démarrer le gestionnaire de serveur
+    # Create and start the server manager
     server_manager = ServerManager()
     signal_handler.server_manager = server_manager
-    
     try:
         server_manager.start()
     except Exception as e:
-        logger.error(f"❌ Erreur fatale lors du démarrage: {e}")
+        logger.error(f"❌ Fatal error during startup: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":

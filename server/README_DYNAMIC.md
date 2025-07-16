@@ -1,60 +1,60 @@
-# 🚀 Système de Détection Militaire - Version Dynamique
+# 🚀 Military Detection System - Dynamic Version
 
-## 📋 Vue d'ensemble
+## 📋 Overview
 
-Ce système de détection militaire est entièrement **dynamique** et **en temps réel**. Toutes les données sont sauvegardées automatiquement, les statistiques sont calculées en temps réel, et le système s'auto-optimise.
+This military detection system is fully **dynamic** and **real-time**. All data is saved automatically, statistics are calculated in real time, and the system self-optimizes.
 
-## 🔄 Fonctionnalités Dynamiques
+## 🔄 Dynamic Features
 
-### ✅ **Sauvegarde Automatique des Détections**
-- **Temps réel** : Chaque détection YOLO est sauvegardée instantanément
-- **Base de données** : SQLite avec SQLAlchemy pour la persistance
-- **Trajectoires** : Suivi automatique des objets détectés
-- **Métadonnées** : Timestamp, confiance, position, vitesse
+### ✅ **Automatic Detection Saving**
+- **Real-time**: Each YOLO detection is saved instantly
+- **Database**: SQLite with SQLAlchemy for persistence
+- **Trajectories**: Automatic tracking of detected objects
+- **Metadata**: Timestamp, confidence, position, speed
 
-### ✅ **Historisation 24h Automatique**
-- **Fenêtres temporelles** : 1h, 6h, 24h configurable
-- **Filtrage dynamique** : Par confiance, classe d'objet, période
-- **Tri chronologique** : Plus récentes en premier
-- **Export complet** : Toutes les données exportables
+### ✅ **24h Automatic History**
+- **Time windows**: 1h, 6h, 24h configurable
+- **Dynamic filtering**: By confidence, object class, period
+- **Chronological sorting**: Most recent first
+- **Full export**: All data exportable
 
-### ✅ **Statistiques en Temps Réel**
-- **Calculs dynamiques** : FPS, nombre d'objets, confiance moyenne
-- **Fenêtres multiples** : 1s, 1min, 5min, 1h, 24h
-- **Métriques avancées** : Vitesse, distance, trajectoires
-- **API temps réel** : `/api/statistics/realtime`
+### ✅ **Real-Time Statistics**
+- **Dynamic calculations**: FPS, object count, average confidence
+- **Multiple windows**: 1s, 1min, 5min, 1h, 24h
+- **Advanced metrics**: Speed, distance, trajectories
+- **Real-time API**: `/api/statistics/realtime`
 
-### ✅ **Maintenance Automatique**
-- **Nettoyage intelligent** : Suppression des données anciennes
-- **Optimisation DB** : VACUUM et ANALYZE automatiques
-- **Sauvegardes** : Quotidiennes avec rotation
-- **Monitoring** : Vérification de santé continue
+### ✅ **Automatic Maintenance**
+- **Smart cleanup**: Deletes old data
+- **DB optimization**: Automatic VACUUM and ANALYZE
+- **Backups**: Daily with rotation
+- **Monitoring**: Continuous health check
 
-## 🛠️ Architecture Dynamique
+## 🛠️ Dynamic Architecture
 
 ### **Backend (Flask)**
 ```
 server/
-├── app.py                 # Serveur principal avec API dynamique
-├── yolo_detector.py       # Détecteur YOLO avec callback temps réel
-├── config.py              # Configuration centralisée
-├── maintenance.py         # Service de maintenance automatique
-├── start_server_enhanced.py # Démarrage avec tous les services
-└── README_DYNAMIC.md      # Cette documentation
+├── app.py                 # Main server with dynamic API
+├── yolo_detector.py       # YOLO detector with real-time callback
+├── config.py              # Centralized configuration
+├── maintenance.py         # Automatic maintenance service
+├── start_server_enhanced.py # Startup with all services
+└── README_DYNAMIC.md      # This documentation
 ```
 
 ### **Frontend (React)**
 ```
 client/src/components/
-├── DetectionPanel.js      # Affichage dynamique des détections
-├── CameraView.js          # Streaming vidéo en temps réel
-├── PerformancePanel.js    # Statistiques dynamiques
-└── Header.js              # Contrôles système
+├── DetectionPanel.js      # Dynamic detection display
+├── CameraView.js          # Real-time video streaming
+├── PerformancePanel.js    # Dynamic statistics
+└── Header.js              # System controls
 ```
 
-## 🚀 Démarrage Rapide
+## 🚀 Quick Start
 
-### **1. Installation des dépendances**
+### **1. Install dependencies**
 ```bash
 cd server
 pip install -r requirements.txt
@@ -62,158 +62,153 @@ pip install -r requirements.txt
 
 ### **2. Configuration**
 ```bash
-# Copier le modèle YOLO
+# Copy YOLO model
 cp your_model.onnx models/best.onnx
 
-# Ajouter des vidéos
+# Add videos
 cp your_videos.mp4 videos/
 ```
 
-### **3. Démarrage du serveur**
+### **3. Start the server**
 ```bash
-# Démarrage simple
+# Simple start
 python app.py
 
-# Démarrage avec maintenance automatique
+# Start with automatic maintenance
 python start_server_enhanced.py
 ```
 
-### **4. Démarrage du client**
+### **4. Start the client**
 ```bash
 cd client
 npm start
 ```
 
-## 📊 API Dynamique
+## 📊 Dynamic API
 
-### **Détections en Temps Réel**
+### **Real-Time Detections**
 ```http
 GET /api/detections/current?time_window=5&confidence=0.5&limit=10
 ```
 
-### **Statistiques Dynamiques**
+### **Dynamic Statistics**
 ```http
 GET /api/statistics/realtime
 ```
 
-### **Historique avec Filtres**
+### **History with Filters**
 ```http
 GET /api/detections?timeRange=24h&confidence=0.7&class=person
 ```
 
-### **Export Complet**
+### **Full Export**
 ```http
 POST /api/export
 ```
 
-## 🔧 Configuration Dynamique
+## 🔧 Dynamic Configuration
 
-### **Fichier `config.py`**
+### **File `config.py`**
 ```python
 class Config:
-    # Détections
+    # Detections
     DETECTION_CLEANUP_HOURS = 24
     DETECTION_LOW_CONFIDENCE_THRESHOLD = 0.3
-    
-    # Trajectoires
+    # Trajectories
     TRAJECTORY_INACTIVE_HOURS = 1
     TRAJECTORY_POINT_CLEANUP_DAYS = 3
-    
     # Maintenance
     MAINTENANCE_CLEANUP_INTERVAL_MINUTES = 30
     MAINTENANCE_BACKUP_TIME = "02:00"
 ```
 
-## 📈 Monitoring et Maintenance
+## 📈 Monitoring and Maintenance
 
-### **Logs Automatiques**
-- **Détections** : Chaque détection est loggée
-- **Erreurs** : Gestion automatique des erreurs
-- **Performance** : Métriques système en temps réel
-- **Maintenance** : Actions de nettoyage documentées
+### **Automatic Logs**
+- **Detections**: Each detection is logged
+- **Errors**: Automatic error handling
+- **Performance**: Real-time system metrics
+- **Maintenance**: Documented cleanup actions
 
-### **Sauvegardes Automatiques**
-- **Quotidiennes** : À 2h du matin
-- **Rotation** : Garde 7 jours de sauvegardes
-- **Intégrité** : Vérification automatique
+### **Automatic Backups**
+- **Daily**: At 2am
+- **Rotation**: Keeps 7 days of backups
+- **Integrity**: Automatic verification
 
-### **Nettoyage Intelligent**
-- **Détections anciennes** : Suppression après 24h
-- **Faible confiance** : Nettoyage des détections < 30%
-- **Trajectoires inactives** : Marquage après 1h
-- **Points anciens** : Suppression après 3 jours
+### **Smart Cleanup**
+- **Old detections**: Deleted after 24h
+- **Low confidence**: Cleans detections < 30%
+- **Inactive trajectories**: Marked after 1h
+- **Old points**: Deleted after 3 days
 
-## 🎯 Utilisation Dynamique
+## 🎯 Dynamic Usage
 
-### **1. Démarrer la Détection**
-- Cliquer sur "Start Detection" dans CameraView
-- Le système démarre automatiquement le streaming
-- Les détections sont sauvegardées en temps réel
+### **1. Start Detection**
+- Click "Start Detection" in CameraView
+- The system automatically starts streaming
+- Detections are saved in real time
 
-### **2. Consulter l'Historique**
-- Onglet "History" dans DetectionPanel
-- Filtres dynamiques : temps, confiance, classe
-- Export complet avec métadonnées
+### **2. View History**
+- "History" tab in DetectionPanel
+- Dynamic filters: time, confidence, class
+- Full export with metadata
 
-### **3. Monitorer les Performances**
-- PerformancePanel affiche les métriques en temps réel
-- FPS, temps d'inférence, nombre d'objets
-- Graphiques dynamiques
+### **3. Monitor Performance**
+- PerformancePanel shows real-time metrics
+- FPS, inference time, object count
+- Dynamic graphs
 
-### **4. Maintenance Automatique**
-- Le système s'auto-optimise
-- Nettoyage automatique des données
-- Sauvegardes quotidiennes
+### **4. Automatic Maintenance**
+- The system self-optimizes
+- Automatic data cleanup
+- Daily backups
 
-## 🔍 Dépannage
+## 🔍 Troubleshooting
 
-### **Problème : Vidéo ne s'affiche pas**
+### **Problem: Video not displaying**
 ```bash
-# Vérifier OpenCV
+# Check OpenCV
 pip install opencv-python
-
-# Vérifier le modèle YOLO
+# Check YOLO model
 ls models/best.onnx
 ```
 
-### **Problème : Détections non sauvegardées**
+### **Problem: Detections not saved**
 ```bash
-# Vérifier la base de données
+# Check database
 ls instance/detection_history.db
-
-# Vérifier les logs
+# Check logs
 tail -f server.log
 ```
 
-### **Problème : Performance lente**
+### **Problem: Slow performance**
 ```bash
-# Nettoyer manuellement
+# Manual cleanup
 curl -X POST http://localhost:5000/api/cleanup/auto
-
-# Vérifier les statistiques
+# Check statistics
 curl http://localhost:5000/api/statistics/realtime
 ```
 
-## 📝 Notes Importantes
+## 📝 Important Notes
 
-### **✅ Système Entièrement Dynamique**
-- **Pas de données statiques** : Tout est calculé en temps réel
-- **Sauvegarde automatique** : Chaque détection est persistée
-- **Optimisation continue** : Maintenance automatique
-- **Monitoring intégré** : Santé système en temps réel
+### **✅ Fully Dynamic System**
+- **No static data**: Everything is calculated in real time
+- **Automatic saving**: Each detection is persisted
+- **Continuous optimization**: Automatic maintenance
+- **Integrated monitoring**: Real-time system health
 
-### **🎯 Performance Optimisée**
-- **Base de données** : Index automatiques sur les timestamps
-- **Requêtes optimisées** : Filtrage au niveau SQL
-- **Cache intelligent** : Mise en cache des statistiques
-- **Nettoyage automatique** : Évite l'accumulation de données
+### **🎯 Optimized Performance**
+- **Database**: Automatic indexes on timestamps
+- **Optimized queries**: SQL-level filtering
+- **Smart cache**: Statistics caching
+- **Automatic cleanup**: Prevents data buildup
 
-### **🔒 Sécurité et Fiabilité**
-- **Gestion d'erreurs** : Try-catch sur toutes les opérations
-- **Rollback automatique** : En cas d'erreur de base de données
-- **Logs complets** : Traçabilité de toutes les opérations
-- **Sauvegardes** : Protection contre la perte de données
+### **🔒 Security and Reliability**
+- **Error handling**: Try-catch on all operations
+- **Automatic rollback**: On database error
+- **Complete logs**: Traceability of all operations
+- **Backups**: Protection against data loss
 
 ---
 
-**🎉 Le système est maintenant entièrement dynamique et prêt pour la production !** 
+**🎉 The system is now fully dynamic and ready for production!** 

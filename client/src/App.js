@@ -1,17 +1,21 @@
+// App.js - Main application component for the Military Detection System Dashboard
+// Handles backend connection, data fetching, and layout
 import React, { useState, useEffect, useCallback } from 'react';
 import Header from './components/Header';
 import CameraView from './components/CameraView';
 import DetectionPanel from './components/DetectionPanel';
 import PerformancePanel from './components/PerformancePanel';
+import TrackingMap from './components/TrackingMap';
 import './App.css';
 
-// Configuration de l'API
+// API base URL configuration
 const API_BASE_URL = 'http://localhost:5000/api';
 
 function App() {
-  const [systemStatus, setSystemStatus] = useState('stopped');
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
+  // --- State Management ---
+  const [systemStatus, setSystemStatus] = useState('stopped'); // System running/stopped
+  const [isPlaying, setIsPlaying] = useState(false); // Video play state
+  const [isConnected, setIsConnected] = useState(false); // Backend connection status
 
   const [performanceData, setPerformanceData] = useState({
     fps: 30,
@@ -19,14 +23,12 @@ function App() {
     objectCount: 5
   });
 
-  // État pour l'historique des détections
-  const [detectionHistory, setDetectionHistory] = useState([]);
-  const [trajectoryHistory, setTrajectoryHistory] = useState({});
-  const [currentDetections, setCurrentDetections] = useState([]);
+  const [detectionHistory, setDetectionHistory] = useState([]); // Detection history
+  const [trajectoryHistory, setTrajectoryHistory] = useState({}); // Trajectory history
+  const [currentDetections, setCurrentDetections] = useState([]); // Current detections
+  const [logs, setLogs] = useState([]); // System logs
 
-  const [logs, setLogs] = useState([]);
-
-  // Styles inline pour l'image de fond
+  // --- Inline Styles ---
   const appStyle = {
     minHeight: '100vh',
     background: `linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), url('/BG.jfif')`,
@@ -38,7 +40,7 @@ function App() {
     flexDirection: 'column'
   };
 
-  // Fonctions API
+  // --- Backend Connection Check ---
   const checkBackendConnection = useCallback(async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/health`);
@@ -55,11 +57,7 @@ function App() {
     }
   }, []);
 
-  // Supprimez ce hook inutilisé :
-  // const saveDetectionToBackend = useCallback(async (detection) => {
-  //   ...code...
-  // }, [isConnected]);
-
+  // --- Detection History Fetch ---
   const loadDetectionHistory = useCallback(async () => {
     if (!isConnected) return;
     try {
@@ -74,6 +72,7 @@ function App() {
     }
   }, [isConnected]);
 
+  // --- Trajectory History Fetch ---
   const loadTrajectoryHistory = useCallback(async () => {
     if (!isConnected) return;
     try {
@@ -98,6 +97,7 @@ function App() {
     }
   }, [isConnected]);
 
+  // --- Cleanup Old Data ---
   const cleanupOldData = useCallback(async () => {
     if (!isConnected) return;
     try {
@@ -115,26 +115,14 @@ function App() {
     }
   }, [isConnected, loadDetectionHistory, loadTrajectoryHistory]);
 
-  // Supprimez ces deux hooks inutilisés :
-  // const addToDetectionHistory = useCallback(async (detections) => {
-  //   ...code...
-  // }, [saveDetectionToBackend]);
-
-  // const updateTrajectories = useCallback((detections) => {
-  //   ...code...
-  // }, [trajectoryHistory]);
-
-  // Vérifier la connexion au démarrage
+  // --- Effects: Backend Connection Polling ---
   useEffect(() => {
     checkBackendConnection();
-    
-    // Vérifier la connexion toutes les 30 secondes
-    const connectionInterval = setInterval(checkBackendConnection, 30000);
-    
+    const connectionInterval = setInterval(checkBackendConnection, 30000); // Every 30s
     return () => clearInterval(connectionInterval);
   }, [checkBackendConnection]);
 
-  // Charger l'historique au démarrage et quand la connexion est établie
+  // --- Effects: Load History on Connect ---
   useEffect(() => {
     if (isConnected) {
       loadDetectionHistory();
@@ -142,7 +130,7 @@ function App() {
     }
   }, [isConnected, loadDetectionHistory, loadTrajectoryHistory]);
 
-  // Charger les logs du backend
+  // --- Backend Logs Fetch ---
   const loadLogs = useCallback(async () => {
     if (!isConnected) return;
     try {
@@ -166,31 +154,31 @@ function App() {
     }
   }, [isConnected]);
 
-  // Charger les logs au démarrage et quand la connexion est établie
+  // --- Effects: Load Logs on Connect ---
   useEffect(() => {
     if (isConnected) {
       loadLogs();
     }
   }, [isConnected, loadLogs]);
 
-  // Nouvelle fonction pour charger les détections courantes depuis le backend
+  // --- Current Detections Fetch ---
   const loadCurrentDetections = useCallback(async () => {
     if (!isConnected) return;
     try {
       const response = await fetch(`${API_BASE_URL}/detections/current`);
       if (response.ok) {
         const data = await response.json();
-        // Extraire le tableau de détections de la réponse
+        // Extract detections array from response
         const detections = data.detections || data || [];
         setCurrentDetections(detections);
       }
     } catch (error) {
-      console.error('Erreur lors du chargement des détections courantes:', error);
+      console.error('Error loading current detections:', error);
       setCurrentDetections([]);
     }
   }, [isConnected]);
 
-  // Nouvelle fonction pour charger les performances depuis le backend
+  // --- Performance Data Fetch ---
   const loadPerformanceData = useCallback(async () => {
     if (!isConnected) return;
     try {
@@ -200,47 +188,46 @@ function App() {
         setPerformanceData(perf);
       }
     } catch (error) {
-      console.error('Erreur lors du chargement des performances:', error);
+      console.error('Error loading performance data:', error);
     }
   }, [isConnected]);
 
-  // Charger les données courantes et performances au démarrage et périodiquement
+  // --- Effects: Periodic Data Refresh when Running ---
   useEffect(() => {
     if (isConnected && systemStatus === 'running') {
       loadCurrentDetections();
       loadPerformanceData();
-      loadDetectionHistory(); // Recharger l'historique aussi
-      // Rafraîchir toutes les secondes
+      loadDetectionHistory(); // Also refresh history
+      // Refresh every second
       const interval = setInterval(() => {
         loadCurrentDetections();
         loadPerformanceData();
-        loadDetectionHistory(); // Recharger l'historique aussi
+        loadDetectionHistory();
       }, 1000);
       return () => clearInterval(interval);
     }
   }, [isConnected, systemStatus, loadCurrentDetections, loadPerformanceData, loadDetectionHistory]);
 
-  // Supprimer la simulation locale des détections et performances
+  // --- Effects: Periodic Cleanup ---
   useEffect(() => {
-    // Nettoyer l'historique toutes les heures
+    // Clean up history every hour
     const cleanupInterval = setInterval(cleanupOldData, 60 * 60 * 1000);
     return () => {
       clearInterval(cleanupInterval);
     };
   }, [systemStatus, isConnected, cleanupOldData]);
 
+  // --- System Start/Stop Handler ---
   const handleSystemToggle = async () => {
     try {
       const newStatus = systemStatus === 'running' ? 'stopped' : 'running';
-      
       if (newStatus === 'running') {
-        // Démarrer le streaming
+        // Start streaming
         const response = await fetch(`${API_BASE_URL}/yolo/stream/start`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ video_path: 'videos/people.mp4' }) // Vidéo par défaut
+          body: JSON.stringify({ video_path: 'videos/people.mp4' }) // Default video
         });
-        
         if (response.ok) {
           setSystemStatus('running');
           setIsPlaying(true);
@@ -256,12 +243,11 @@ function App() {
           console.error('Failed to start streaming');
         }
       } else {
-        // Arrêter le streaming
+        // Stop streaming
         const response = await fetch(`${API_BASE_URL}/yolo/stream/stop`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' }
         });
-        
         if (response.ok) {
           setSystemStatus('stopped');
           setIsPlaying(false);
@@ -290,8 +276,7 @@ function App() {
     }
   };
 
-
-
+  // --- Main Render ---
   return (
     <div className="app" style={appStyle}>
       <Header 
@@ -307,6 +292,10 @@ function App() {
               onPause={() => setIsPlaying(false)}
               onStep={() => {}}
               detections={currentDetections}
+              // Pass setCurrentDetections for child updates
+              setCurrentDetections={setCurrentDetections}
+              isConnected={isConnected}
+              systemStatus={systemStatus}
             />
           </div>
           <div className="right-panel">
@@ -317,6 +306,16 @@ function App() {
               isConnected={isConnected}
             />
           </div>
+        </div>
+        {/* Tracking map section */}
+        <div className="map-section">
+          <TrackingMap
+            detections={currentDetections}
+            trajectoryHistory={trajectoryHistory}
+            isConnected={isConnected}
+            mapCenter={[48.8566, 2.3522]} // Default: Paris
+            zoomLevel={13}
+          />
         </div>
       </div>
       <div className="bottom-panel">

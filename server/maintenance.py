@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Script de maintenance automatique pour le serveur de détection.
-Gère le nettoyage automatique des données et l'optimisation de la base de données.
+maintenance.py - Automatic maintenance script for the detection server.
+Handles scheduled data cleanup, database optimization, health checks, and backups.
 """
 
 import schedule
@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 import sqlite3
 import os
 
-# Configuration du logging
+# --- Logging Configuration ---
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -22,138 +22,125 @@ logging.basicConfig(
     ]
 )
 
-# Configuration
+# --- Main Configuration ---
 SERVER_URL = "http://localhost:5000"
 DB_PATH = "instance/detection_history.db"
 
+# --- Cleanup Old Data via API ---
 def cleanup_old_data():
-    """Nettoyer les données anciennes via l'API"""
+    """Clean up old data via the API."""
     try:
         response = requests.post(f"{SERVER_URL}/api/cleanup/auto", timeout=30)
         if response.status_code == 200:
             result = response.json()
-            logging.info(f"✅ Nettoyage automatique réussi: {result}")
+            logging.info(f"✅ Automatic cleanup successful: {result}")
         else:
-            logging.error(f"❌ Erreur lors du nettoyage: {response.status_code}")
+            logging.error(f"❌ Error during cleanup: {response.status_code}")
     except Exception as e:
-        logging.error(f"❌ Erreur de connexion au serveur: {e}")
+        logging.error(f"❌ Connection error to server: {e}")
 
+# --- Optimize SQLite Database ---
 def optimize_database():
-    """Optimiser la base de données SQLite"""
+    """Optimize the SQLite database (VACUUM, ANALYZE, integrity check)."""
     try:
         if os.path.exists(DB_PATH):
             conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
-            
-            # VACUUM pour réorganiser la base de données
+            # VACUUM to reorganize the database
             cursor.execute("VACUUM")
-            
-            # ANALYZE pour mettre à jour les statistiques
+            # ANALYZE to update statistics
             cursor.execute("ANALYZE")
-            
-            # Vérifier l'intégrité
+            # Check integrity
             cursor.execute("PRAGMA integrity_check")
             integrity = cursor.fetchone()
-            
             conn.close()
-            
             if integrity[0] == 'ok':
-                logging.info("✅ Base de données optimisée avec succès")
+                logging.info("✅ Database optimized successfully")
             else:
-                logging.warning(f"⚠️ Problèmes d'intégrité détectés: {integrity}")
+                logging.warning(f"⚠️ Integrity issues detected: {integrity}")
         else:
-            logging.warning("⚠️ Base de données non trouvée")
-            
+            logging.warning("⚠️ Database not found")
     except Exception as e:
-        logging.error(f"❌ Erreur lors de l'optimisation de la base: {e}")
+        logging.error(f"❌ Error during database optimization: {e}")
 
+# --- System Health Check ---
 def check_system_health():
-    """Vérifier la santé du système"""
+    """Check the health of the system via API endpoints."""
     try:
-        # Vérifier la connexion au serveur
+        # Check server connection
         response = requests.get(f"{SERVER_URL}/api/health", timeout=10)
         if response.status_code == 200:
             health = response.json()
-            logging.info(f"✅ Système en bonne santé: {health}")
+            logging.info(f"✅ System healthy: {health}")
         else:
-            logging.error(f"❌ Problème de santé du système: {response.status_code}")
-            
-        # Vérifier les statistiques
+            logging.error(f"❌ System health problem: {response.status_code}")
+        # Check statistics
         response = requests.get(f"{SERVER_URL}/api/statistics/realtime", timeout=10)
         if response.status_code == 200:
             stats = response.json()
-            logging.info(f"📊 Statistiques système: {stats['global']}")
+            logging.info(f"📊 System statistics: {stats['global']}")
         else:
-            logging.error(f"❌ Impossible de récupérer les statistiques: {response.status_code}")
-            
+            logging.error(f"❌ Unable to retrieve statistics: {response.status_code}")
     except Exception as e:
-        logging.error(f"❌ Erreur lors de la vérification de santé: {e}")
+        logging.error(f"❌ Error during health check: {e}")
 
+# --- Backup the Database ---
 def backup_database():
-    """Sauvegarder la base de données"""
+    """Backup the database to the backups directory."""
     try:
         if os.path.exists(DB_PATH):
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             backup_path = f"backups/detection_history_{timestamp}.db"
-            
-            # Créer le dossier de sauvegarde s'il n'existe pas
+            # Create backup directory if it doesn't exist
             os.makedirs("backups", exist_ok=True)
-            
-            # Copier la base de données
+            # Copy the database
             import shutil
             shutil.copy2(DB_PATH, backup_path)
-            
-            logging.info(f"✅ Sauvegarde créée: {backup_path}")
-            
-            # Nettoyer les anciennes sauvegardes (garder seulement les 7 derniers jours)
+            logging.info(f"✅ Backup created: {backup_path}")
+            # Clean up old backups (keep only last 7 days)
             cleanup_old_backups()
         else:
-            logging.warning("⚠️ Base de données non trouvée pour la sauvegarde")
-            
+            logging.warning("⚠️ Database not found for backup")
     except Exception as e:
-        logging.error(f"❌ Erreur lors de la sauvegarde: {e}")
+        logging.error(f"❌ Error during backup: {e}")
 
+# --- Cleanup Old Backups ---
 def cleanup_old_backups():
-    """Nettoyer les anciennes sauvegardes"""
+    """Remove old backups older than 7 days."""
     try:
         if os.path.exists("backups"):
             cutoff_date = datetime.now() - timedelta(days=7)
-            
             for filename in os.listdir("backups"):
                 if filename.startswith("detection_history_") and filename.endswith(".db"):
                     file_path = os.path.join("backups", filename)
                     file_time = datetime.fromtimestamp(os.path.getctime(file_path))
-                    
                     if file_time < cutoff_date:
                         os.remove(file_path)
-                        logging.info(f"🗑️ Ancienne sauvegarde supprimée: {filename}")
-                        
+                        logging.info(f"🗑️ Old backup deleted: {filename}")
     except Exception as e:
-        logging.error(f"❌ Erreur lors du nettoyage des sauvegardes: {e}")
+        logging.error(f"❌ Error during backup cleanup: {e}")
 
+# --- Main Maintenance Loop ---
 def main():
-    """Fonction principale de maintenance"""
-    logging.info("🚀 Démarrage du système de maintenance automatique")
-    
-    # Planifier les tâches de maintenance
-    schedule.every(30).minutes.do(cleanup_old_data)  # Nettoyage toutes les 30 minutes
-    schedule.every(2).hours.do(optimize_database)    # Optimisation toutes les 2 heures
-    schedule.every(15).minutes.do(check_system_health)  # Vérification de santé toutes les 15 minutes
-    schedule.every().day.at("02:00").do(backup_database)  # Sauvegarde quotidienne à 2h du matin
-    
-    # Exécuter une première vérification
+    """Main function for automatic maintenance."""
+    logging.info("🚀 Starting automatic maintenance system")
+    # Schedule maintenance tasks
+    schedule.every(30).minutes.do(cleanup_old_data)  # Cleanup every 30 minutes
+    schedule.every(2).hours.do(optimize_database)    # Optimize every 2 hours
+    schedule.every(15).minutes.do(check_system_health)  # Health check every 15 minutes
+    schedule.every().day.at("02:00").do(backup_database)  # Daily backup at 2am
+    # Initial health check
     check_system_health()
-    
-    # Boucle principale
+    # Main loop
     while True:
         try:
             schedule.run_pending()
-            time.sleep(60)  # Vérifier toutes les minutes
+            time.sleep(60)  # Check every minute
         except KeyboardInterrupt:
-            logging.info("🛑 Arrêt du système de maintenance")
+            logging.info("🛑 Stopping maintenance system")
             break
         except Exception as e:
-            logging.error(f"❌ Erreur dans la boucle principale: {e}")
+            logging.error(f"❌ Error in main loop: {e}")
             time.sleep(60)
 
 if __name__ == "__main__":

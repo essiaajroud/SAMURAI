@@ -7,14 +7,16 @@ from datetime import datetime
 import threading
 import queue
 
+# yolo_detector.py - YOLO object detection logic for the server
+# Handles model loading, video processing, streaming, and detection callbacks
+
 class YOLODetector:
     def __init__(self, model_path="models/best.onnx", confidence_threshold=0.5):
         """
-        Initialise le détecteur YOLO
-        
+        Initialize the YOLO detector.
         Args:
-            model_path (str): Chemin vers le modèle YOLO (.pt ou .onnx)
-            confidence_threshold (float): Seuil de confiance pour les détections
+            model_path (str): Path to YOLO model (.pt or .onnx)
+            confidence_threshold (float): Confidence threshold for detections
         """
         self.model_path = model_path
         self.confidence_threshold = confidence_threshold
@@ -23,99 +25,84 @@ class YOLODetector:
         self.current_video = None
         self.detection_queue = queue.Queue()
         self.detection_callback = None
-        
-        # Charger le modèle
+        # Load the model
         self.load_model()
-    
+
     def load_model(self):
-        """Charge le modèle YOLO (ONNX ou PyTorch)."""
+        """Load the YOLO model (ONNX or PyTorch)."""
         if not os.path.exists(self.model_path):
-            print(f"❌ Modèle non trouvé: {self.model_path}")
+            print(f"❌ Model not found: {self.model_path}")
             self.model = None
             return
         try:
             self.model = YOLO(self.model_path, task="detect")
-            print(f"✅ Modèle chargé: {self.model_path}")
+            print(f"✅ Model loaded: {self.model_path}")
         except Exception as e:
-            print(f"❌ Erreur lors du chargement du modèle: {e}")
+            print(f"❌ Error loading model: {e}")
             self.model = None
 
-    
     def set_detection_callback(self, callback):
-        """Définit la fonction de callback pour les détections"""
+        """Set the callback function for detections."""
         self.detection_callback = callback
-    
+
     def process_video(self, video_path, save_results=True):
         """
-        Traite une vidéo avec le modèle YOLO
-        
+        Process a video with the YOLO model.
         Args:
-            video_path (str): Chemin vers la vidéo
-            save_results (bool): Sauvegarder les résultats
+            video_path (str): Path to the video
+            save_results (bool): Whether to save results
         """
+        print(f"[YOLO] Processing video or stream: {video_path}")  # Ajout du log
         if not os.path.exists(video_path):
-            print(f"❌ Vidéo non trouvée: {video_path}")
+            print(f"❌ Video not found: {video_path}")
             return
-        
         if self.model is None:
-            print("❌ Modèle non chargé")
+            print("❌ Model not loaded")
             return
-        
         try:
-            # Ouvrir la vidéo
+            # Open the video
             cap = cv2.VideoCapture(video_path)
             if not cap.isOpened():
-                print(f"❌ Impossible d'ouvrir la vidéo: {video_path}")
+                print(f"❌ Unable to open video: {video_path}")
                 return
-            
-            # Obtenir les propriétés de la vidéo
+            # Get video properties
             fps = int(cap.get(cv2.CAP_PROP_FPS))
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            
-            print(f"📹 Traitement de la vidéo: {video_path}")
-            print(f"📊 FPS: {fps}, Résolution: {width}x{height}, Frames: {total_frames}")
-            
-            # Préparer la sauvegarde des résultats
+            print(f"📹 Processing video: {video_path}")
+            print(f"📊 FPS: {fps}, Resolution: {width}x{height}, Frames: {total_frames}")
+            # Prepare to save results
             if save_results:
                 output_path = video_path.replace('.mp4', '_detected.mp4')
                 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
                 out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-            
             frame_count = 0
             start_time = time.time()
-            
             while True:
                 ret, frame = cap.read()
                 if not ret:
                     break
-                
-                # Détecter les objets
+                # Detect objects
                 results = self.model(frame, conf=self.confidence_threshold, verbose=False)
-                
-                # Traiter les détections
+                # Process detections
                 detections = []
                 for result in results:
                     boxes = result.boxes
                     if boxes is not None:
                         for box in boxes:
-                            # Coordonnées du bounding box
+                            # Bounding box coordinates
                             x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
                             x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-                            
-                            # Classe et confiance
+                            # Class and confidence
                             cls = int(box.cls[0].cpu().numpy())
                             conf = float(box.conf[0].cpu().numpy())
-                            
-                            # Nom de la classe
+                            # Class name
                             class_name = result.names[cls]
-                            
-                            # Calculer le centre
+                            # Calculate center
                             center_x = (x1 + x2) / 2
                             center_y = (y1 + y2) / 2
-                            
-                            # Créer l'objet de détection
+                            # Create detection object
                             detection = {
                                 'id': len(detections) + 1,
                                 'label': class_name,
@@ -126,81 +113,66 @@ class YOLODetector:
                                 'timestamp': datetime.now().isoformat(),
                                 'frame': frame_count
                             }
-                            
                             detections.append(detection)
-                            
-                            # Dessiner le bounding box
+                            # Draw bounding box
                             if save_results:
                                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                                 cv2.putText(frame, f'{class_name} {conf:.2f}', 
                                           (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                
-                # Envoyer les détections via callback
+                # Send detections via callback
                 if self.detection_callback and detections:
                     for detection in detections:
                         self.detection_callback(detection)
-                
-                # Sauvegarder le frame
+                # Save the frame
                 if save_results:
                     out.write(frame)
-                
                 frame_count += 1
-                
-                # Afficher le progrès
+                # Show progress
                 if frame_count % 30 == 0:
                     elapsed = time.time() - start_time
                     fps_processed = frame_count / elapsed
                     progress = (frame_count / total_frames) * 100
-                    print(f"📈 Progrès: {progress:.1f}% ({frame_count}/{total_frames}) - FPS: {fps_processed:.1f}")
-            
-            # Nettoyer
+                    print(f"📈 Progress: {progress:.1f}% ({frame_count}/{total_frames}) - FPS: {fps_processed:.1f}")
+            # Cleanup
             cap.release()
             if save_results:
                 out.release()
-                print(f"✅ Vidéo traitée sauvegardée: {output_path}")
-            
+                print(f"✅ Processed video saved: {output_path}")
             total_time = time.time() - start_time
-            print(f"✅ Traitement terminé en {total_time:.2f} secondes")
-            
+            print(f"✅ Processing finished in {total_time:.2f} seconds")
         except Exception as e:
-            print(f"❌ Erreur lors du traitement: {e}")
-    
+            print(f"❌ Error during processing: {e}")
+
     def process_video_stream(self, video_path):
         """
-        Traite une vidéo en streaming (pour l'interface web)
-        
+        Process a video in streaming mode (for web interface).
         Args:
-            video_path (str): Chemin vers la vidéo
+            video_path (str): Path to the video
         """
+        print(f"[YOLO] Streaming started for: {video_path}")  # Ajout du log
         if not os.path.exists(video_path):
-            print(f"❌ Vidéo non trouvée: {video_path}")
+            print(f"❌ Video not found: {video_path}")
             return
-        
         if self.model is None:
-            print("❌ Modèle non chargé")
+            print("❌ Model not loaded")
             return
-        
         try:
             cap = cv2.VideoCapture(video_path)
             if not cap.isOpened():
-                print(f"❌ Impossible d'ouvrir la vidéo: {video_path}")
+                print(f"❌ Unable to open video: {video_path}")
                 return
-            
             self.is_running = True
             self.current_video = video_path
-            print(f"🎬 Streaming démarré pour: {video_path}")
-            
+            print(f"🎬 Streaming started for: {video_path}")
             while self.is_running:
                 ret, frame = cap.read()
                 if not ret:
-                    # Revenir au début de la vidéo
+                    # Loop back to start of video
                     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     continue
-                
-                # Détecter les objets
+                # Detect objects
                 results = self.model(frame, conf=self.confidence_threshold, verbose=False)
-                
-                # Traiter les détections
+                # Process detections
                 detections = []
                 for result in results:
                     boxes = result.boxes
@@ -226,44 +198,44 @@ class YOLODetector:
                             
                             detections.append(detection)
                 
-                # Envoyer les détections
+                # Send detections
                 if self.detection_callback and detections:
                     for detection in detections:
                         self.detection_callback(detection)
                 
-                # Contrôler la vitesse de traitement
+                # Control processing speed
                 time.sleep(0.033)  # ~30 FPS
             
             cap.release()
             
         except Exception as e:
-            print(f"❌ Erreur lors du streaming: {e}")
+            print(f"❌ Error during streaming: {e}")
         finally:
             self.is_running = False
             self.current_video = None
-            print("🛑 Streaming terminé")
+            print("🛑 Streaming finished")
     
     def start_streaming(self, video_path):
-        """Démarre le streaming d'une vidéo dans un thread séparé"""
+        """Starts streaming a video in a separate thread."""
         if self.is_running:
-            print("🔄 Arrêt du streaming précédent...")
+            print("🔄 Stopping previous streaming...")
             self.stop_streaming()
         
-        print(f"▶️ Démarrage du streaming YOLO avec la vidéo: {video_path}")
+        print(f"▶️ Starting YOLO streaming with video: {video_path}")
         thread = threading.Thread(target=self.process_video_stream, args=(video_path,))
         thread.daemon = True
         thread.start()
         return thread
     
     def stop_streaming(self):
-        """Arrête le streaming"""
-        print("🛑 Arrêt du streaming YOLO...")
+        """Stops the streaming."""
+        print("🛑 Stopping YOLO streaming...")
         self.is_running = False
         self.current_video = None
-        print("✅ Streaming YOLO arrêté")
+        print("✅ YOLO streaming stopped")
     
     def get_available_videos(self):
-        """Retourne la liste des vidéos disponibles"""
+        """Returns the list of available videos."""
         videos_dir = "videos"
         if not os.path.exists(videos_dir):
             return []
@@ -278,9 +250,9 @@ class YOLODetector:
         return videos
     
     def get_model_info(self):
-        """Retourne les informations sur le modèle"""
+        """Returns model information."""
         if self.model is None:
-            return {"status": "not_loaded", "message": "Modèle non chargé"}
+            return {"status": "not_loaded", "message": "Model not loaded"}
         
         return {
             "status": "loaded",
@@ -297,26 +269,26 @@ class YOLODetector:
         import uuid
         
         if not os.path.exists(video_path):
-            print(f"❌ Vidéo non trouvée: {video_path}")
+            print(f"❌ Video not found: {video_path}")
             return
         if self.model is None:
-            print("❌ Modèle non chargé")
+            print("❌ Model not loaded")
             return
 
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
-            print(f"❌ Impossible d'ouvrir la vidéo: {video_path}")
+            print(f"❌ Unable to open video: {video_path}")
             return
 
         frame_count = 0
-        while self.is_running:  # Vérifier le statut du streaming
+        while self.is_running:  # Check streaming status
             ret, frame = cap.read()
             if not ret:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 frame_count = 0
                 continue
 
-            # Détection seulement si le streaming est actif
+            # Only detect if streaming is active
             if not self.is_running:
                 break
                 
@@ -332,16 +304,16 @@ class YOLODetector:
                         conf = float(box.conf[0].cpu().numpy())
                         class_name = result.names[cls]
                         
-                        # Dessiner sur le frame
+                        # Draw on the frame
                         cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0,255,0), 2)
                         cv2.putText(frame, f"{class_name} {conf:.2f}", (int(x1), int(y1)-10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
                         
-                        # Préparer les données de détection pour sauvegarde
+                        # Prepare detection data for saving
                         center_x = (x1 + x2) / 2
                         center_y = (y1 + y2) / 2
                         
                         detection_data = {
-                            'id': frame_count * 1000 + len(detections_in_frame),  # ID unique basé sur frame
+                            'id': frame_count * 1000 + len(detections_in_frame),  # Unique ID based on frame
                             'label': class_name,
                             'confidence': conf,
                             'x': center_x,
@@ -353,15 +325,15 @@ class YOLODetector:
                         
                         detections_in_frame.append(detection_data)
             
-            # Sauvegarder les détections en temps réel via callback seulement si le streaming est actif
+            # Save detections in real-time via callback only if streaming is active
             if self.is_running and self.detection_callback and detections_in_frame:
                 for detection in detections_in_frame:
                     try:
                         self.detection_callback(detection)
                     except Exception as e:
-                        print(f"❌ Erreur lors de la sauvegarde de la détection: {e}")
+                        print(f"❌ Error saving detection: {e}")
 
-            # Encodage JPEG
+            # JPEG encoding
             ret2, jpeg = cv2.imencode('.jpg', frame)
             if not ret2:
                 continue
@@ -373,5 +345,5 @@ class YOLODetector:
             
         cap.release()
 
-# Instance globale du détecteur
+# Global detector instance
 detector = YOLODetector()

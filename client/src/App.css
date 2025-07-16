@@ -1,3 +1,8 @@
+/* App.css - Main stylesheet for the Military Detection System Dashboard
+   Provides layout, color, animation, and responsive design for the app UI
+*/
+
+/* --- Global Styles --- */
 body {
   margin: 0;
   font-family: 'Courier New', monospace;
@@ -12,6 +17,7 @@ body {
   overflow-x: hidden;
 }
 
+/* --- App Container --- */
 .app {
   min-height: 100vh;
   color: #ffffff;
@@ -19,10 +25,12 @@ body {
   flex-direction: column;
 }
 
+/* --- Header --- */
 .dashboard-header {
   flex-shrink: 0;
 }
 
+/* --- Main Content Layout --- */
 .main-content {
   flex: 1;
   display: flex;
@@ -48,13 +56,18 @@ body {
   min-height: 0;
 }
 
+.map-section {
+  margin-top: 20px;
+  width: 100%;
+}
+
 .bottom-panel {
   flex-shrink: 0;
   height: 300px;
   min-height: 300px;
 }
 
-/* Scrollbar styling */
+/* --- Scrollbar Styling --- */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -73,7 +86,7 @@ body {
   background: #b8d4a0;
 }
 
-/* Global styles */
+/* --- Reset and Utility Styles --- */
 * {
   margin: 0;
   padding: 0;
@@ -84,7 +97,7 @@ button {
   font-family: 'Courier New', monospace;
 }
 
-/* Animations */
+/* --- Animations --- */
 @keyframes pulse {
   0% {
     box-shadow: 0 0 0 0 rgba(213, 232, 194, 0.4);
@@ -101,6 +114,7 @@ button {
   animation: pulse 2s infinite;
 }
 
+/* --- Header Card Styles --- */
 .header {
   display: flex;
   justify-content: space-between;
@@ -145,6 +159,7 @@ button {
   text-shadow: 1px 1px 3px #000;
 }
 
+/* --- Grid and Card Layouts --- */
 .grid {
   display: grid;
   gap: 20px;
@@ -169,6 +184,7 @@ button {
   color: #a2c5a2;
 }
 
+/* --- Bar Graph Styles --- */
 .bar-container {
   margin-bottom: 12px;
 }
@@ -191,6 +207,7 @@ button {
   transition: width 0.5s ease;
 }
 
+/* --- Analysis Section --- */
 .analysis .analysis-item {
   margin: 10px 0;
   font-size: 15px;
@@ -199,6 +216,7 @@ button {
   border-radius: 6px;
 }
 
+/* --- Map Section --- */
 .map-card .map {
   position: relative;
   border: 2px solid #2e3d2f;
@@ -228,7 +246,7 @@ button {
   100% { transform: scale(1); opacity: 1; }
 }
 
-/* Responsive design */
+/* --- Responsive Design --- */
 @media (max-width: 1200px) {
   .content-area {
     flex-direction: column;
@@ -240,21 +258,5 @@ button {
   
   .right-panel {
     flex: 1;
-  }
-}
-
-@media (max-width: 768px) {
-  .main-content {
-    padding: 10px;
-    gap: 10px;
-  }
-  
-  .content-area {
-    gap: 10px;
-  }
-  
-  .bottom-panel {
-    height: 250px;
-    min-height: 250px;
   }
 }

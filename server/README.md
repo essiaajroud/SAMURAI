@@ -1,69 +1,68 @@
 # Detection History Backend Server
 
-Serveur Flask pour stocker et gérer l'historique des détections et trajectoires.
+Flask server to store and manage the history of detections and trajectories.
 
 ## Installation
 
-1. **Créer un environnement virtuel** :
+1. **Create a virtual environment**:
 ```bash
 python -m venv venv
 ```
 
-2. **Activer l'environnement virtuel** :
+2. **Activate the virtual environment**:
 ```bash
 # Windows
 venv\Scripts\activate
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
 .\venv\Scripts\Activate.ps1
 
-
 # Linux/Mac
 source venv/bin/activate
 ```
 
-3. **Installer les dépendances** :
+3. **Install dependencies**:
 ```bash
 pip install -r requirements.txt
 ```
 
-## Démarrage du serveur
+## Starting the Server
 
 ```bash
 python app.py
 ```
 
-Le serveur sera accessible sur `http://localhost:5000`
+The server will be accessible at `http://localhost:5000`
 
 ## API Endpoints
 
-### Détections
-- `POST /api/detections` - Sauvegarder une nouvelle détection
-- `GET /api/detections` - Récupérer les détections avec filtres
+### Detections
+- `POST /api/detections` - Save a new detection
+- `GET /api/detections` - Retrieve detections with filters
 
-### Trajectoires
-- `GET /api/trajectories` - Récupérer toutes les trajectoires
+### Trajectories
+- `GET /api/trajectories` - Retrieve all trajectories
 
-### Statistiques
-- `GET /api/statistics` - Statistiques globales
+### Statistics
+- `GET /api/statistics` - Global statistics
 
 ### Maintenance
-- `POST /api/cleanup` - Nettoyer les données anciennes
-- `POST /api/export` - Exporter toutes les données
-- `GET /api/health` - Vérification de l'état du serveur
+- `POST /api/cleanup` - Clean up old data
+- `POST /api/export` - Export all data
+- `GET /api/health` - Server health check
 
-## Base de données
+## Database
 
-La base de données SQLite est automatiquement créée dans `detection_history.db`
+The SQLite database is automatically created in `detection_history.db`
 
 ### Tables
-- `detection` - Historique des détections
-- `trajectory` - Informations sur les trajectoires
-- `trajectory_point` - Points individuels des trajectoires
+- `detection` - Detection history
+- `trajectory` - Trajectory information
+- `trajectory_point` - Individual trajectory points
 
 ## Configuration
 
-Modifier `app.py` pour changer :
-- Port du serveur
-- Type de base de données
-- Clé secrète
-- Paramètres de nettoyage 
+Edit `app.py` to change:
+- Server port
+- Database type
+- Secret key
+- Cleanup parameters 

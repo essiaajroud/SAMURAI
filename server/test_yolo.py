@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Script de test pour l'intégration YOLO
+test_yolo.py - Test script for YOLO integration and server endpoints.
+Runs health, model, video list, and streaming status checks.
 """
 
 import os
@@ -9,99 +10,97 @@ import requests
 import json
 import time
 
+# --- Test Server Health ---
 def test_server_health():
-    """Test de la santé du serveur"""
+    """Test server health endpoint."""
     try:
         response = requests.get('http://localhost:5000/api/health')
         if response.status_code == 200:
             data = response.json()
-            print(f"✅ Serveur en ligne: {data}")
+            print(f"✅ Server online: {data}")
             return data.get('yolo_available', False)
         else:
-            print(f"❌ Serveur non accessible: {response.status_code}")
+            print(f"❌ Server not accessible: {response.status_code}")
             return False
     except Exception as e:
-        print(f"❌ Erreur de connexion: {e}")
+        print(f"❌ Connection error: {e}")
         return False
 
+# --- Test YOLO Model ---
 def test_yolo_model():
-    """Test du modèle YOLO"""
+    """Test YOLO model endpoint."""
     try:
         response = requests.get('http://localhost:5000/api/yolo/model')
         if response.status_code == 200:
             data = response.json()
-            print(f"✅ Modèle YOLO: {data}")
+            print(f"✅ YOLO model: {data}")
             return True
         else:
-            print(f"❌ Erreur modèle YOLO: {response.status_code}")
+            print(f"❌ YOLO model error: {response.status_code}")
             return False
     except Exception as e:
-        print(f"❌ Erreur test modèle: {e}")
+        print(f"❌ YOLO model test error: {e}")
         return False
 
+# --- Test Videos List ---
 def test_videos_list():
-    """Test de la liste des vidéos"""
+    """Test available videos endpoint."""
     try:
         response = requests.get('http://localhost:5000/api/yolo/videos')
         if response.status_code == 200:
             data = response.json()
-            print(f"✅ Vidéos disponibles: {data}")
+            print(f"✅ Available videos: {data}")
             return data.get('videos', [])
         else:
-            print(f"❌ Erreur liste vidéos: {response.status_code}")
+            print(f"❌ Videos list error: {response.status_code}")
             return []
     except Exception as e:
-        print(f"❌ Erreur test vidéos: {e}")
+        print(f"❌ Videos test error: {e}")
         return []
 
+# --- Test Streaming Status ---
 def test_streaming_status():
-    """Test du statut du streaming"""
+    """Test streaming status endpoint."""
     try:
         response = requests.get('http://localhost:5000/api/yolo/stream/status')
         if response.status_code == 200:
             data = response.json()
-            print(f"✅ Statut streaming: {data}")
+            print(f"✅ Streaming status: {data}")
             return data
         else:
-            print(f"❌ Erreur statut streaming: {response.status_code}")
+            print(f"❌ Streaming status error: {response.status_code}")
             return None
     except Exception as e:
-        print(f"❌ Erreur test streaming: {e}")
+        print(f"❌ Streaming test error: {e}")
         return None
 
+# --- Main Test Runner ---
 def main():
-    """Fonction principale de test"""
-    print("🧪 Test d'intégration YOLO")
+    """Main test function."""
+    print("🧪 YOLO Integration Test")
     print("=" * 50)
-    
-    # Test 1: Santé du serveur
-    print("\n1. Test de la santé du serveur...")
+    # Test 1: Server health
+    print("\n1. Testing server health...")
     yolo_available = test_server_health()
-    
     if not yolo_available:
-        print("⚠️ YOLO n'est pas disponible sur le serveur")
+        print("⚠️ YOLO is not available on the server.")
         return
-    
-    # Test 2: Modèle YOLO
-    print("\n2. Test du modèle YOLO...")
+    # Test 2: YOLO model
+    print("\n2. Testing YOLO model...")
     test_yolo_model()
-    
-    # Test 3: Liste des vidéos
-    print("\n3. Test de la liste des vidéos...")
+    # Test 3: Videos list
+    print("\n3. Testing available videos...")
     videos = test_videos_list()
-    
     if videos:
-        print(f"📹 {len(videos)} vidéo(s) trouvée(s):")
+        print(f"📹 {len(videos)} video(s) found:")
         for video in videos:
             print(f"   - {video}")
     else:
-        print("📹 Aucune vidéo trouvée")
-    
-    # Test 4: Statut du streaming
-    print("\n4. Test du statut du streaming...")
+        print("📹 No videos found.")
+    # Test 4: Streaming status
+    print("\n4. Testing streaming status...")
     test_streaming_status()
-    
-    print("\n✅ Tests terminés")
+    print("\n✅ Tests completed.")
 
 if __name__ == "__main__":
     main() 

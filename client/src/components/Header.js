@@ -1,11 +1,15 @@
+// Header.js - Displays dashboard header, system status, and controls
+// Shows logo, system status, connection, and time
 import React, { useState, useEffect } from 'react';
 import './Header.css';
 import PropTypes from 'prop-types';
 import logo from '../Assets/logo.png';
 
+// Main Header component
 const Header = ({ onSystemToggle, systemStatus, isConnected = false }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
 
+  // Update clock every second
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
@@ -13,6 +17,7 @@ const Header = ({ onSystemToggle, systemStatus, isConnected = false }) => {
     return () => clearInterval(timer);
   }, []);
 
+  // Get emoji for system status
   const getStatusColor = () => {
     switch (systemStatus) {
       case 'running':
@@ -26,10 +31,12 @@ const Header = ({ onSystemToggle, systemStatus, isConnected = false }) => {
     }
   };
 
+  // Get connection status string
   const getConnectionStatus = () => {
     return isConnected ? '🟢 Connected' : '🔴 Disconnected';
   };
 
+  // --- Render ---
   return (
     <header className="dashboard-header">
       <div className="header-left">

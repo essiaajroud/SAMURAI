@@ -1,20 +1,22 @@
+// DetectionPanel.js - Shows current, historical, and trajectory detection data
+// Provides filtering, export, and analytics for detections
 import React, { useState, useMemo } from 'react';
 import './DetectionPanel.css';
 import PropTypes from 'prop-types';
 
-// Hook pour filtrer les détections et l'historique
+// Custom hook to filter detections and history based on UI controls
 function useDetectionFilters(detections, detectionHistory, confidenceThreshold, selectedClass, timeRange) {
-  // Gérer le cas où detections peut être un objet avec la structure { detections: [...], metadata: {...} }
+  // Support both array and object structure for detections
   const detectionsArray = useMemo(() => 
     Array.isArray(detections) ? detections : (detections?.detections || []),
     [detections]
   );
-  
+  // List of available classes for filtering
   const uniqueClasses = useMemo(
     () => ['all', 'person', 'soldier', 'weapon', 'military_vehicles', 'civilian_vehicles', 'military_aircraft', 'civilian_aircraft'],
     []
   );
-
+  // Filter current detections by class and confidence
   const filteredCurrentDetections = useMemo(() =>
     detectionsArray.filter(detection => {
       const matchesClass = selectedClass === 'all' || detection.label === selectedClass;
@@ -23,8 +25,7 @@ function useDetectionFilters(detections, detectionHistory, confidenceThreshold, 
     }),
     [detectionsArray, selectedClass, confidenceThreshold]
   );
-
-  // Calculer la plage de temps en ms une seule fois
+  // Calculate time range in ms
   const timeRangeMs = useMemo(() => {
     switch (timeRange) {
       case '1h': return 60 * 60 * 1000;
@@ -33,27 +34,22 @@ function useDetectionFilters(detections, detectionHistory, confidenceThreshold, 
       default: return 60 * 60 * 1000;
     }
   }, [timeRange]);
-
+  // Filter detection history by time, class, and confidence
   const filteredHistory = useMemo(() => {
-    const filtered = detectionHistory.filter(detection => {
-      // Convertir le timestamp ISO en millisecondes
+    return detectionHistory.filter(detection => {
       const timestampMs = typeof detection.timestamp === 'string' 
         ? new Date(detection.timestamp).getTime() 
         : detection.timestamp;
-      
       const isInTimeRange = Date.now() - timestampMs < timeRangeMs;
       const matchesClass = selectedClass === 'all' || detection.label === selectedClass;
       const matchesConfidence = detection.confidence >= confidenceThreshold;
       return isInTimeRange && matchesClass && matchesConfidence;
     });
-    
-    return filtered;
   }, [detectionHistory, selectedClass, confidenceThreshold, timeRangeMs]);
-
   return { uniqueClasses, filteredCurrentDetections, filteredHistory };
 }
 
-// Hook pour analyser les trajectoires
+// Custom hook to analyze trajectory data
 function useTrajectoryAnalysis(trajectoryHistory) {
   return useMemo(() =>
     Object.values(trajectoryHistory).map(trajectory => {
@@ -82,22 +78,21 @@ function useTrajectoryAnalysis(trajectoryHistory) {
   );
 }
 
-
+// Main DetectionPanel component
 const DetectionPanel = ({ detections = [], detectionHistory = [], trajectoryHistory = {}, isConnected = false }) => {
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.5);
   const [selectedClass, setSelectedClass] = useState('all');
   const [activeTab, setActiveTab] = useState('current');
-  const [timeRange, setTimeRange] = useState('24h'); // 1h, 6h, 24h - Par défaut 24h pour l'historique
+  const [timeRange, setTimeRange] = useState('24h'); // Default: 24h for history
 
-  // Utilisation des hooks personnalisés
+  // Use custom hooks for filtering and analytics
   const { uniqueClasses, filteredCurrentDetections, filteredHistory } = useDetectionFilters(
     detections, detectionHistory, confidenceThreshold, selectedClass, timeRange
   );
   const trajectoryAnalysis = useTrajectoryAnalysis(trajectoryHistory);
 
-  // Fonction pour exporter l'historique avec données filtrées
+  // Export filtered detection history as JSON
   const exportHistory = () => {
-    // Préparer les données filtrées pour l'export
     const exportData = {
       exportDate: new Date().toISOString(),
       exportInfo: {
@@ -108,11 +103,9 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], trajectoryHist
         selectedClass: selectedClass,
         exportTimestamp: new Date().toLocaleString()
       },
-      // Données complètes
       detectionHistory: detectionHistory,
       trajectoryHistory: trajectoryHistory,
       currentDetections: detections,
-      // Données filtrées (ce qui est affiché)
       filteredHistory: filteredHistory,
       filters: {
         confidenceThreshold,
@@ -120,7 +113,6 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], trajectoryHist
         timeRange
       }
     };
-    
     const dataStr = JSON.stringify(exportData, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(dataBlob);
@@ -133,13 +125,14 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], trajectoryHist
     URL.revokeObjectURL(url);
   };
 
+  // --- Render ---
   return (
     <div className="detection-panel">
+      {/* Panel header with export and filters */}
       <div className="panel-header">
         <div className="header-top">
           <h2>Detection Details</h2>
           <div className="header-controls">
-            
             <button 
               className="export-button"
               onClick={exportHistory}
@@ -170,6 +163,7 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], trajectoryHist
             Trajectories
           </button>
         </div>
+        {/* Filters for class, confidence, and time range */}
         <div className="filters">
           <div className="filter-group">
             <label htmlFor="class-select">Class:</label>
@@ -177,7 +171,7 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], trajectoryHist
               id="class-select"
               value={selectedClass}
               onChange={(e) => setSelectedClass(e.target.value)}
-              aria-label="Filtrer par classe"
+              aria-label="Filter by class"
             >
               {uniqueClasses.map(cls => (
                 <option key={cls} value={cls}>
@@ -209,7 +203,7 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], trajectoryHist
                 id="time-range-select"
                 value={timeRange}
                 onChange={(e) => setTimeRange(e.target.value)}
-                aria-label="Filtrer par plage temporelle"
+                aria-label="Filter by time range"
               >
                 <option value="1h">Last Hour</option>
                 <option value="6h">Last 6 Hours</option>
@@ -219,7 +213,7 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], trajectoryHist
           )}
         </div>
       </div>
-
+      {/* Panel content for current, history, and trajectories */}
       <div className="panel-content">
         {activeTab === 'current' && (
           <div className="detections-table">
