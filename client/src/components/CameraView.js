@@ -1,190 +1,177 @@
 // CameraView.js - Displays video feed and overlays detections
 // Handles video selection, detection start/stop, and drawing overlays
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import './CameraView.css';
 import PropTypes from 'prop-types';
 
 const API_BASE_URL = 'http://localhost:5000/api';
 
-// Custom hook to fetch available videos from backend
-function useVideos() {
-  const [videos, setVideos] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    const fetchVideos = async () => {
-      setLoading(true);
-      setError('');
-      try {
-        const res = await fetch(`${API_BASE_URL}/yolo/videos`);
-        const data = await res.json();
-        if (data.videos) {
-          // Remove 'videos/' or 'videos\' prefix for display
-          const videoNames = data.videos.map(v => v.replace(/^videos[/\\]/, ''));
-          setVideos(videoNames);
-        }
-      } catch (err) {
-        setError('Error loading videos');
-      }
-      setLoading(false);
-    };
-    fetchVideos();
-  }, []);
-
-  return { videos, loading, error };
-}
 
 // Custom hook to draw detections on the canvas overlay
-function useDrawDetections(canvasRef, detections) {
+function useDrawDetections(canvasRef, detections, videoElement) {
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !videoElement) return;
     const ctx = canvas.getContext('2d');
+
+    // Match canvas size to video element size
+    canvas.width = videoElement.clientWidth;
+    canvas.height = videoElement.clientHeight;
+    
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
     // Draw each detection as a rectangle and label
     const detectionsArray = Array.isArray(detections) ? detections : [];
     detectionsArray.forEach(detection => {
+      // Scale detection coords to video display size
+      const scaleX = videoElement.clientWidth / (videoElement.videoWidth || videoElement.clientWidth);
+      const scaleY = videoElement.clientHeight / (videoElement.videoHeight || videoElement.clientHeight);
+
       const { x, y, width, height, label, confidence } = detection;
       ctx.strokeStyle = '#00ff00';
       ctx.lineWidth = 2;
-      ctx.strokeRect(x, y, width, height);
+      ctx.strokeRect(x * scaleX, y * scaleY, width * scaleX, height * scaleY);
       ctx.fillStyle = '#00ff00';
       ctx.font = '14px Arial';
-      ctx.fillText(`${label} (${(confidence * 100).toFixed(1)}%)`, x, y - 5);
+      ctx.fillText(`${label} (${(confidence * 100).toFixed(1)}%)`, x * scaleX, y * scaleY - 5);
     });
-  }, [canvasRef, detections]);
+  }, [canvasRef, detections, videoElement]);
 }
 
 // Main CameraView component
 const CameraView = ({ 
-  isPlaying, 
-  onPause, 
-  detections = [], 
+  isPlaying,
+  onPause,
+  detections = [],
   isConnected,
   systemStatus,
-  setCurrentDetections
+  videos = [],
+  selectedVideo,
+  setSelectedVideo,
+  isDetectionStarted,
+  onStartStopDetection,
+  sourceType,
+  setSourceType,
+  networkUrl,
+  setNetworkUrl
 }) => {
   const canvasRef = useRef(null);
+  const videoRef = useRef(null); // For local camera feed
+  // SUPPRIMER : const detectionIntervalRef = useRef(null);
 
-  // Fetch video list from backend
-  const { videos, loading: videosLoading, error: videosError } = useVideos();
-  const [selectedVideo, setSelectedVideo] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState('');
-  const [isDetectionStarted, setIsDetectionStarted] = useState(false);
-  
+  // This component is now mostly controlled by App.js
+  // Local state can be for UI feedback, like loading, if needed.
+  const [loading, setLoading] = useState(false); // Can still be useful for local UI feedback
 
-  // Select the first available video by default
+  // --- HOOKS ---
+
+  // Draw detections overlay, now with video element reference
+  useDrawDetections(canvasRef, detections || [], videoRef.current);
+
+  // Stop all streams when component unmounts
   useEffect(() => {
-    if (videos.length > 0 && !selectedVideo) {
-      setSelectedVideo(videos[0]);
-    }
-  }, [videos, selectedVideo]);
+    return () => {
+      // Ensure detection is stopped on server as well
+      fetch(`${API_BASE_URL}/yolo/stream/stop`, { method: 'POST' });
+    };
+  }, []);
 
-  // Draw detections overlay
-  useDrawDetections(canvasRef, detections || []);
 
-  // Start/stop detection for the selected video
-  const handleStartDetection = useCallback(async () => {
-    if (!selectedVideo) return;
+  // The main detection handler is now passed from App.js
+  const handleStartStopClick = async () => {
     setLoading(true);
-    setStatus('');
-    try {
-      if (!isDetectionStarted) {
-        // Start detection
-        const res = await fetch(`${API_BASE_URL}/yolo/stream/start`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ video_path: `videos/${selectedVideo}` })
-        });
-        const data = await res.json();
-        if (res.ok) {
-          setStatus('Detection started!');
-          setIsDetectionStarted(true);
-        } else {
-          setStatus(data.error || 'Error starting detection');
-        }
-      } else {
-        // Stop detection
-        const res = await fetch(`${API_BASE_URL}/yolo/stream/stop`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
-        });
-        if (res.ok) {
-          setStatus('Detection stopped!');
-          setIsDetectionStarted(false);
-        } else {
-          setStatus('Error stopping detection');
-        }
-      }
-    } catch (err) {
-      setStatus('Error managing detection');
-    }
+    await onStartStopDetection();
     setLoading(false);
-  }, [selectedVideo, isDetectionStarted]);
+  };
 
-  // Poll current detections from backend when running
-  useEffect(() => {
-    if (isConnected && systemStatus === 'running') {
-      const interval = setInterval(async () => {
-        try {
-          const res = await fetch(`${API_BASE_URL}/detections/current`);
-          if (res.ok) {
-            const data = await res.json();
-            // Extract detections array from response
-            const detections = data.detections || data || [];
-            setCurrentDetections(detections);
-          }
-        } catch (error) {
-          console.error('Error retrieving detections:', error);
-        }
-      }, 1000);
-      return () => clearInterval(interval);
-    }
-  }, [isConnected, systemStatus, setCurrentDetections]);
+  // Polling logic is now in App.js, so this useEffect is no longer needed here.
 
-  // --- Render ---
+
+  // --- RENDER ---
+  const renderSourceSelector = () => (
+    <div className="source-selector-container">
+       <label htmlFor="source-type-select">Source:</label>
+       <select 
+         id="source-type-select"
+         value={sourceType}
+         onChange={e => setSourceType(e.target.value)}
+         disabled={isDetectionStarted}
+       >
+         <option value="network">Network Camera (Phone/Rover)</option>
+         <option value="video">Server Video</option>
+       </select>
+       
+       {sourceType === 'video' && (
+         <>
+           <label htmlFor="video-select" style={{ marginLeft: 18 }}>Video:</label>
+           <select
+             id="video-select"
+             value={selectedVideo}
+             onChange={e => setSelectedVideo(e.target.value)}
+             disabled={isDetectionStarted}
+             aria-label="Video selection"
+           >
+             {videos.map(video => (
+               <option key={video} value={video}>{video}</option>
+             ))}
+           </select>
+         </>
+       )}
+       {sourceType === 'network' && (
+         <>
+           <label htmlFor="network-url" style={{ marginLeft: 18 }}>Network URL:</label>
+           <input
+             type="text"
+             id="network-url"
+             value={networkUrl}
+             onChange={e => setNetworkUrl(e.target.value)}
+             placeholder="e.g., http://192.168.1.100:8080"
+             disabled={isDetectionStarted}
+             style={{ marginLeft: 18 }}
+           />
+         </>
+       )}
+    </div>
+  );
+
   return (
     <div className="camera-view">
       {/* Video selection and control bar */}
-      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 0 }}>
-        <label htmlFor="video-select" style={{ marginLeft: 18, marginRight: 18 }}>Video: </label>
-        <select
-          id="video-select"
-          value={selectedVideo}
-          onChange={e => setSelectedVideo(e.target.value)}
-          style={{ marginRight: 0 }}
-          aria-label="Video selection"
-        >
-          {videos.map(video => (
-            <option key={video} value={video}>{video}</option>
-          ))}
-        </select>
+      <div className="control-bar">
+        {renderSourceSelector()}
         
         <button
           className={`control-button ${isDetectionStarted ? 'pause' : 'play'}`}
-          onClick={handleStartDetection}
-          disabled={loading || !selectedVideo}
+          onClick={handleStartStopClick}
+          disabled={loading || (sourceType === 'video' && !selectedVideo) || (sourceType === 'network' && !networkUrl)}
           aria-busy={loading}
           style={{ marginLeft: 'auto', marginRight: 18 }}
         >
           {loading ? 'Loading...' : (isDetectionStarted ? '⏸️ Stop Detection' : '▶️ Start Detection')}
         </button>
-        {videosLoading && <span style={{ marginLeft: 12 }}>Loading videos...</span>}
-        {videosError && <span style={{ marginLeft: 12, color: 'red' }}>{videosError}</span>}
-        {status && <span style={{ marginLeft: 12, color: '#00ff00' }}>{status}</span>}
       </div>
+      <div className="status-bar">
+        {loading && <span className="status-message">Processing...</span>}
+      </div>
+
       {/* Video feed and detection overlay */}
       <div className="video-container">
+        {/* Server-processed Feed (for Video and Network Camera) */}
         {isDetectionStarted && (
           <img
+            ref={videoRef} // Also use ref here to get dimensions for canvas
             className="video-feed"
-            src={`http://localhost:5000/video_feed?video_path=videos/${selectedVideo}`}
+            src={`http://localhost:5000/video_feed?t=${Date.now()}`} // Added timestamp to avoid caching
             alt="Video stream"
             style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }}
           />
         )}
+
+        {/* Fallback display when no stream is active */}
+        {!isDetectionStarted && (
+          <div className="video-placeholder">Select a source and start detection to see the feed.</div>
+        )}
+
         <canvas
           ref={canvasRef}
           className="detection-overlay"
@@ -211,7 +198,15 @@ CameraView.propTypes = {
   detections: PropTypes.array,
   isConnected: PropTypes.bool.isRequired,
   systemStatus: PropTypes.string.isRequired,
-  setCurrentDetections: PropTypes.func.isRequired
+  videos: PropTypes.array.isRequired,
+  selectedVideo: PropTypes.string.isRequired,
+  setSelectedVideo: PropTypes.func.isRequired,
+  isDetectionStarted: PropTypes.bool.isRequired,
+  onStartStopDetection: PropTypes.func.isRequired,
+  sourceType: PropTypes.string.isRequired,
+  setSourceType: PropTypes.func.isRequired,
+  networkUrl: PropTypes.string.isRequired,
+  setNetworkUrl: PropTypes.func.isRequired
 };
 
 export default CameraView;

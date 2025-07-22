@@ -6,7 +6,7 @@ import PropTypes from 'prop-types';
 import logo from '../Assets/logo.png';
 
 // Main Header component
-const Header = ({ onSystemToggle, systemStatus, isConnected = false }) => {
+const Header = ({ onSystemToggle, systemStatus, isConnected = false, isDetectionStarted }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   // Update clock every second
@@ -59,7 +59,7 @@ const Header = ({ onSystemToggle, systemStatus, isConnected = false }) => {
           className={`system-toggle ${systemStatus}`}
           onClick={onSystemToggle}
         >
-          {systemStatus === 'running' ? 'STOP' : 'START'}
+          {isDetectionStarted ? 'STOP SYSTEM' : 'START SYSTEM'}
         </button>
       </div>
     </header>
@@ -69,7 +69,8 @@ const Header = ({ onSystemToggle, systemStatus, isConnected = false }) => {
 Header.propTypes = {
   onSystemToggle: PropTypes.func.isRequired,
   systemStatus: PropTypes.string.isRequired,
-  isConnected: PropTypes.bool
+  isConnected: PropTypes.bool,
+  isDetectionStarted: PropTypes.bool.isRequired
 };
 
 export default Header; 
