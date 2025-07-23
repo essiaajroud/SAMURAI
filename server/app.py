@@ -779,28 +779,26 @@ def get_performance():
 
 @app.route('/api/system-metrics', methods=['GET'])
 def get_system_metrics():
-    """Returns system hardware metrics using psutil."""
+    """Returns detailed, cross-platform system metrics using psutil."""
     try:
-        # Note: GPU metrics are complex and often require specific libraries (e.g., pynvml).
-        # This is a simplified simulation.
-        cpu_usage = psutil.cpu_percent(interval=0.1)
-        ram_usage = psutil.virtual_memory().percent
+        cpu = psutil.cpu_percent(interval=0.1)
+        ram = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
+        net = psutil.net_io_counters()
         
-        # Robust temperature check
-        temps = psutil.sensors_temperatures()
-        cpu_temp = random.uniform(50, 85) # Default fallback
-        if temps and 'coretemp' in temps and temps['coretemp']:
-            cpu_temp = temps['coretemp'][0].current
-        
-        return jsonify({
-            "cpu": cpu_usage,
-            "gpu": random.uniform(30, 70), # Simulated
-            "ram": ram_usage,
-            "tempCpu": cpu_temp,
-            "tempGpu": random.uniform(60, 90), # Simulated
-            "netIn": round(psutil.net_io_counters().bytes_recv / (1024*1024), 2), # MB received
-            "netOut": round(psutil.net_io_counters().bytes_sent / (1024*1024), 2) # MB sent
-        })
+        data = {
+            'cpu_percent': cpu,
+            'ram_percent': ram.percent,
+            'ram_used_MB': ram.used // 1024**2,
+            'ram_total_MB': ram.total // 1024**2,
+            'disk_percent': disk.percent,
+            'disk_used_GB': round(disk.used / 1024**3, 2),
+            'disk_total_GB': round(disk.total / 1024**3, 2),
+            'net_sent_MB': round(net.bytes_sent / 1024**2, 2),
+            'net_recv_MB': round(net.bytes_recv / 1024**2, 2),
+            'running_processes': len(psutil.pids())
+        }
+        return jsonify(data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

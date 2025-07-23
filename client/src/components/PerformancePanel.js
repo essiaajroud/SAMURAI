@@ -97,23 +97,23 @@ const PerformancePanel = ({
     datasets: [
       {
         label: 'CPU Usage (%)',
-        data: systemMetricsHistory.map(m => m.cpu),
+        data: systemMetricsHistory.map(m => m.cpu_percent),
         borderColor: 'rgb(255, 99, 132)',
         backgroundColor: 'rgba(255, 99, 132, 0.5)',
         yAxisID: 'y',
       },
       {
         label: 'RAM Usage (%)',
-        data: systemMetricsHistory.map(m => m.ram),
+        data: systemMetricsHistory.map(m => m.ram_percent),
         borderColor: 'rgb(54, 162, 235)',
         backgroundColor: 'rgba(54, 162, 235, 0.5)',
         yAxisID: 'y',
       },
       {
-        label: 'GPU Usage (%)',
-        data: systemMetricsHistory.map(m => m.gpu),
-        borderColor: 'rgb(75, 192, 192)',
-        backgroundColor: 'rgba(75, 192, 192, 0.5)',
+        label: 'Disk Usage (%)',
+        data: systemMetricsHistory.map(m => m.disk_percent),
+        borderColor: 'rgb(255, 206, 86)',
+        backgroundColor: 'rgba(255, 206, 86, 0.5)',
         yAxisID: 'y',
       },
     ],
@@ -157,9 +157,9 @@ const PerformancePanel = ({
       <div className="panel-header">
           <h2>Performance & Analytics</h2>
         <div className="panel-tabs">
-          <button className={selectedTab === 'model' ? 'active tab-button' : 'tab-button'} onClick={() => setSelectedTab('model')}>Performance Modèle</button>
-          <button className={selectedTab === 'system' ? 'active tab-button' : 'tab-button'} onClick={() => setSelectedTab('system')}>Performance Système</button>
-          <button className={selectedTab === 'history' ? 'active tab-button' : 'tab-button'} onClick={() => setSelectedTab('history')}>Historique</button>
+          <button className={selectedTab === 'model' ? 'active tab-button' : 'tab-button'} onClick={() => setSelectedTab('model')}>Model Performance</button>
+          <button className={selectedTab === 'system' ? 'active tab-button' : 'tab-button'} onClick={() => setSelectedTab('system')}>System Performance</button>
+          <button className={selectedTab === 'history' ? 'active tab-button' : 'tab-button'} onClick={() => setSelectedTab('history')}>History</button>
           <button className={selectedTab === 'logs' ? 'active tab-button' : 'tab-button'} onClick={() => setSelectedTab('logs')}>Logs</button>
         </div>
       </div>
@@ -208,16 +208,13 @@ const PerformancePanel = ({
           <div className="system-metrics-section">
             {/* CPU, GPU, RAM, Températures, Réseau */}
             <div className="metrics-row">
-              <div className="metric-card">CPU Usage<br /><span>{formatMetric(systemMetrics.cpu, 1)}%</span></div>
-              <div className="metric-card">GPU Usage<br /><span>{formatMetric(systemMetrics.gpu, 1)}%</span></div>
-              <div className="metric-card">RAM Used<br /><span>{formatMetric(systemMetrics.ram, 1)}%</span></div>
-              <div className="metric-card">Temp CPU<br /><span>{formatMetric(systemMetrics.tempCpu, 1)}°C</span></div>
-              <div className="metric-card">Temp GPU<br /><span>{formatMetric(systemMetrics.tempGpu, 1)}°C</span></div>
-              </div>
-            <div className="metrics-row">
-              <div className="metric-card">Net In<br /><span>{formatMetric(systemMetrics.netIn)} Mbps</span></div>
-              <div className="metric-card">Net Out<br /><span>{formatMetric(systemMetrics.netOut)} Mbps</span></div>
-              </div>
+              <div className="metric-card">CPU Usage<br /><span>{formatMetric(systemMetrics.cpu_percent, 1)}%</span></div>
+              <div className="metric-card">RAM Usage<br /><span>{formatMetric(systemMetrics.ram_percent, 1)}% ({systemMetrics.ram_used_MB} / {systemMetrics.ram_total_MB} MB)</span></div>
+              <div className="metric-card">Disk Usage<br /><span>{formatMetric(systemMetrics.disk_percent, 1)}% ({systemMetrics.disk_used_GB} / {systemMetrics.disk_total_GB} GB)</span></div>
+              <div className="metric-card">Network Sent<br /><span>{formatMetric(systemMetrics.net_sent_MB, 2)} MB</span></div>
+              <div className="metric-card">Network Received<br /><span>{formatMetric(systemMetrics.net_recv_MB, 2)} MB</span></div>
+              <div className="metric-card">Processes<br /><span>{systemMetrics.running_processes}</span></div>
+            </div>
             <div className="metrics-row" style={{ height: '200px' }}>
               <Line options={systemChartOptions} data={systemChartData} />
             </div>
