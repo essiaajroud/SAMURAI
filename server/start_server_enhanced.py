@@ -21,14 +21,18 @@ from config import get_config
 # --- Load Configuration ---
 config = get_config()
 
+# Variable pour contrôler l'affichage des logs dans le terminal
+DISABLE_CONSOLE_LOGS = True
+
 # --- Logging Configuration ---
+handlers = [logging.FileHandler(config.LOG_FILE)]
+if not DISABLE_CONSOLE_LOGS:
+    handlers.append(logging.StreamHandler())
+
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(config.LOG_FILE),
-        logging.StreamHandler()
-    ]
+    handlers=handlers
 )
 
 logger = logging.getLogger(__name__)

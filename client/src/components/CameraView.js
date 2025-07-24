@@ -72,10 +72,16 @@ const CameraView = ({
   // Stop all streams when component unmounts
   useEffect(() => {
     return () => {
-      // Ensure detection is stopped on server as well
-      fetch(`${API_BASE_URL}/yolo/stream/stop`, { method: 'POST' });
+      // Ensure detection is stopped on server as well, mais seulement si le backend est connecté
+      if (isConnected) {
+        try {
+          fetch(`${API_BASE_URL}/yolo/stream/stop`, { method: 'POST' });
+        } catch (error) {
+          console.warn('Failed to stop stream on unmount:', error);
+        }
+      }
     };
-  }, []);
+  }, [isConnected]);
 
 
   // The main detection handler is now passed from App.js
@@ -155,11 +161,13 @@ const CameraView = ({
         <button
           className={`control-button ${isDetectionStarted ? 'pause' : 'play'}`}
           onClick={handleStartStopClick}
-          disabled={loading || (sourceType === 'video' && !selectedVideo) || (sourceType === 'network' && !networkUrl)}
+          disabled={loading || !isConnected || (sourceType === 'video' && !selectedVideo) || (sourceType === 'network' && !networkUrl)}
           aria-busy={loading}
           style={{ marginLeft: 'auto', marginRight: 18 }}
         >
-          {loading ? 'Loading...' : (isDetectionStarted ? '⏸️ Stop Detection' : '▶️ Start Detection')}
+          {!isConnected
+            ? 'Backend non disponible'
+            : (loading ? 'Chargement...' : (isDetectionStarted ? '⏸️ Arrêter la détection' : '▶️ Démarrer la détection'))}
         </button>
       </div>
       <div className="status-bar">
@@ -174,19 +182,27 @@ const CameraView = ({
       {/* Video feed and detection overlay */}
       <div className="video-container" style={{ height: '520px', width: '100%', minHeight: '520px', boxSizing: 'border-box' }}>
         {/* Server-processed Feed (for Video and Network Camera) */}
-        {isDetectionStarted && (
+        {isDetectionStarted && isConnected && (
           <img
             ref={videoRef} // Also use ref here to get dimensions for canvas
             className="video-feed"
             src={`http://localhost:5000/video_feed?t=${Date.now()}`} // Added timestamp to avoid caching
             alt="Video stream"
             style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }}
+            onError={(e) => {
+              console.warn('Failed to load video feed');
+              e.target.style.display = 'none'; // Cacher l'image en cas d'erreur
+            }}
           />
         )}
 
-        {/* Fallback display when no stream is active */}
-        {!isDetectionStarted && (
-          <div className="video-placeholder">Select a source and start detection to see the feed.</div>
+        {/* Fallback display when no stream is active or backend is not connected */}
+        {(!isDetectionStarted || !isConnected) && (
+          <div className="video-placeholder">
+            {!isConnected
+              ? "Le backend n'est pas disponible. L'interface est en mode hors ligne."
+              : "Sélectionnez une source et démarrez la détection pour voir le flux vidéo."}
+          </div>
         )}
 
         <canvas
@@ -196,12 +212,12 @@ const CameraView = ({
       </div>
       {/* Video controls */}
       <div className="video-controls">
-        <button 
+        <button
           className={`control-button ${isPlaying ? 'pause' : 'play'}`}
           onClick={onPause}
-          disabled={!isDetectionStarted}
+          disabled={!isDetectionStarted || !isConnected}
         >
-          {isPlaying ? '⏸️ Pause' : '▶️ Play'}
+          {isPlaying ? '⏸️ Pause' : '▶️ Lecture'}
         </button>
       </div>
     </div>

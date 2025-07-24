@@ -60,10 +60,23 @@ const PerformancePanel = ({
       id: 'backend-connection',
       timestamp: now,
       level: isConnected ? 'info' : 'error',
-      message: `Backend ${isConnected ? 'connected' : 'not connected'}`
+      message: `Backend ${isConnected ? 'connecté' : 'non connecté'}`
     });
     
-    // Alertes basées sur les métriques système
+    // Si le backend n'est pas connecté, ajouter une alerte pour indiquer que l'interface est en mode hors ligne
+    if (!isConnected) {
+      alerts.push({
+        id: 'offline-mode',
+        timestamp: now,
+        level: 'info',
+        message: 'Interface en mode hors ligne - Les fonctionnalités nécessitant le backend ne sont pas disponibles'
+      });
+      
+      // Ne pas afficher d'autres alertes si le backend n'est pas connecté
+      return alerts;
+    }
+    
+    // Alertes basées sur les métriques système (seulement si le backend est connecté)
     if (systemMetrics) {
       // Alerte de température CPU
       if (systemMetrics.cpu_temp && systemMetrics.cpu_temp > 80) {
@@ -96,7 +109,7 @@ const PerformancePanel = ({
       }
     }
     
-    // Alertes basées sur les détections
+    // Alertes basées sur les détections (seulement si le backend est connecté)
     if (detectionHistory && detectionHistory.length > 0) {
       // Prendre les 5 dernières détections
       const recentDetections = detectionHistory.slice(-5);
@@ -141,9 +154,9 @@ const PerformancePanel = ({
       });
     }
     
-    // Alertes de statut caméra et rover (simulation)
-    const cameraConnected = Math.random() > 0.2; // 80% de chance d'être connecté
-    if (cameraConnected) {
+    // N'afficher les alertes de statut caméra que si le backend est connecté
+    // Statut de la caméra basé sur l'état de détection plutôt que sur une simulation aléatoire
+    if (modelMetrics && modelMetrics.fps && modelMetrics.fps > 0) {
       alerts.push({
         id: 'camera-status',
         timestamp: now,
@@ -154,29 +167,8 @@ const PerformancePanel = ({
       alerts.push({
         id: 'camera-status',
         timestamp: now,
-        level: 'error',
-        message: 'Connexion caméra perdue - Vérifier le câble ou le réseau'
-      });
-    }
-    
-    const roverConnected = Math.random() > 0.1; // 90% de chance d'être connecté
-    if (!roverConnected) {
-      alerts.push({
-        id: 'rover-status',
-        timestamp: now,
-        level: 'error',
-        message: 'Connexion avec le rover perdue - Tentative de reconnexion...'
-      });
-    }
-    
-    // Alerte de batterie (simulation)
-    const batteryLevel = Math.floor(Math.random() * 100);
-    if (batteryLevel < 20) {
-      alerts.push({
-        id: 'battery-status',
-        timestamp: now,
-        level: batteryLevel < 10 ? 'critical' : 'warning',
-        message: `Niveau de batterie ${batteryLevel < 10 ? 'critique' : 'faible'} (${batteryLevel}%) - Autonomie estimée: ${batteryLevel * 3} minutes`
+        level: 'warning',
+        message: 'Caméra non détectée ou flux vidéo inactif'
       });
     }
     

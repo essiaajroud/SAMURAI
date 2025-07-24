@@ -46,7 +46,15 @@ function App() {
   // --- Backend Connection Check ---
   const checkBackendConnection = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/health`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000); // Timeout après 2 secondes
+      
+      const response = await fetch(`${API_BASE_URL}/health`, {
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
       if (response.ok) {
         setIsConnected(true);
         console.log('Backend connected successfully');
@@ -56,7 +64,11 @@ function App() {
       }
     } catch (error) {
       setIsConnected(false);
-      console.error('Backend connection error:', error);
+      if (error.name === 'AbortError') {
+        console.warn('Backend connection timeout');
+      } else {
+        console.error('Backend connection error:', error);
+      }
     }
   }, []);
 
@@ -72,6 +84,8 @@ function App() {
       }
     } catch (error) {
       console.error('Error loading detection history:', error);
+      // Retourner un tableau vide en cas d'erreur pour éviter les erreurs d'affichage
+      setDetectionHistory([]);
     }
   }, [isConnected]);
 
@@ -97,6 +111,8 @@ function App() {
       }
     } catch (error) {
       console.error('Error loading trajectory history:', error);
+      // Retourner un objet vide en cas d'erreur pour éviter les erreurs d'affichage
+      setTrajectoryHistory({});
     }
   }, [isConnected]);
 
@@ -115,6 +131,7 @@ function App() {
       }
     } catch (error) {
       console.error('Error during cleanup:', error);
+      // Ne pas bloquer l'interface en cas d'erreur
     }
   }, [isConnected, loadDetectionHistory, loadTrajectoryHistory]);
 
@@ -135,6 +152,8 @@ function App() {
       }
     } catch (error) {
       console.error('Error loading videos:', error);
+      // Définir une liste vide de vidéos en cas d'erreur
+      setVideos([]);
     }
   }, [isConnected]);
 
@@ -148,7 +167,8 @@ function App() {
   // --- Effects: Backend Connection Polling ---
   useEffect(() => {
     checkBackendConnection();
-    const connectionInterval = setInterval(checkBackendConnection, 30000); // Every 30s
+    // Vérifier la connexion plus fréquemment (toutes les 10 secondes)
+    const connectionInterval = setInterval(checkBackendConnection, 10000);
     return () => clearInterval(connectionInterval);
   }, [checkBackendConnection]);
 
@@ -176,29 +196,49 @@ function App() {
           // Regex for Werkzeug access logs (e.g., "127.0.0.1 - - [...] GET /api/health ...")
           const werkzeugRegex = /"(\w+)\s(.*?)\s(HTTP.*?)"\s(\d+)/;
           const werkzeugMatch = line.match(werkzeugRegex);
+          
+          // Ne pas inclure les logs des statuts des APIs
           if (werkzeugMatch) {
-            const status = parseInt(werkzeugMatch[4], 10);
-            const level = status >= 400 ? 'ERROR' : 'INFO';
-            return {
-              timestamp: new Date().toISOString(),
-              level: level,
-              message: `${werkzeugMatch[1]} ${werkzeugMatch[2]} - Status ${werkzeugMatch[4]}`
-            };
+            // Retourner null pour filtrer ce log
+            return null;
           }
 
           // Regex for my custom logs (e.g., "✅ YOLO detector loaded successfully.")
           const customLogRegex = /(✅|▶️|🛑|❌|⚠️)\s(.*)/;
           const customMatch = line.match(customLogRegex);
           if (customMatch) {
+            // Filtrer les logs liés à l'output de terminal
+            const message = customMatch[2];
+            if (message.includes("GET /api/") ||
+                message.includes("Status 200") ||
+                message.includes("Backend connecté") ||
+                message.includes("Streaming started") ||
+                message.includes("Streaming stopped") ||
+                message.includes("Détections trouvées")) {
+              return null;
+            }
+            
             const levelMap = { '✅': 'SUCCESS', '▶️': 'INFO', '🛑': 'INFO', '❌': 'ERROR', '⚠️': 'WARNING' };
             return {
               timestamp: new Date().toISOString(),
               level: levelMap[customMatch[1]] || 'INFO',
-              message: customMatch[2]
+              message: message
             };
           }
 
           // Fallback for generic lines
+          // Filtrer les lignes génériques qui contiennent des informations d'API ou de terminal
+          if (line.includes("GET /api/") ||
+              line.includes("Status 200") ||
+              line.includes("Backend connecté") ||
+              line.includes("Streaming started") ||
+              line.includes("Streaming stopped") ||
+              line.includes("Détections trouvées") ||
+              line.includes("Detected change in") ||
+              line.includes("reloading")) {
+            return null;
+          }
+          
           return {
             timestamp: new Date().toISOString(),
             level: 'INFO',
@@ -209,7 +249,11 @@ function App() {
         setLogs(parsedLogs.reverse()); // Show newest first
       }
     } catch (error) {
-      setLogs([{ timestamp: Date.now(), level: 'ERROR', message: 'Failed to load logs: ' + error }]);
+      // Ajouter un message d'erreur aux logs mais ne pas bloquer l'interface
+      setLogs([
+        { timestamp: Date.now(), level: 'ERROR', message: 'Failed to load logs: ' + error },
+        { timestamp: Date.now(), level: 'INFO', message: 'Interface running in offline mode - backend not available' }
+      ]);
     }
   }, [isConnected]);
 
@@ -233,6 +277,7 @@ function App() {
       }
     } catch (error) {
       console.error('Error loading current detections:', error);
+      // Définir une liste vide de détections en cas d'erreur
       setCurrentDetections([]);
     }
   }, [isConnected]);
@@ -253,6 +298,17 @@ function App() {
       }
     } catch (error) {
       console.error('Error loading performance data:', error);
+      // Initialiser les données de performance avec des valeurs par défaut
+      setPerformanceData({
+        fps: 0,
+        inferenceTime: 0,
+        objectCount: 0,
+        detectionRate: 0,
+        precision: 0,
+        recall: 0,
+        f1Score: 0,
+        timestamp: new Date().toLocaleTimeString()
+      });
     }
   }, [isConnected]);
 
@@ -272,6 +328,17 @@ function App() {
       }
     } catch (error) {
       console.error('Error loading system metrics:', error);
+      // Initialiser les métriques système avec des valeurs par défaut
+      const defaultMetrics = {
+        cpu_percent: 0,
+        ram_percent: 0,
+        disk_percent: 0,
+        timestamp: new Date().toLocaleTimeString()
+      };
+      setSystemMetricsHistory(prevHistory => {
+        const newHistory = [...prevHistory, defaultMetrics];
+        return newHistory.slice(-60);
+      });
     }
   }, [isConnected]);
 

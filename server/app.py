@@ -21,21 +21,27 @@ import psutil
 import random
 
 
+# Configuration pour les logs
+ENABLE_LOGS = False  # Désactive l'affichage des logs
+
 # --- YOLO Detector Initialization ---
 try:
     from yolo_detector import detector
     YOLO_AVAILABLE = detector.model is not None
-    if YOLO_AVAILABLE:
+    if YOLO_AVAILABLE and ENABLE_LOGS:
         print("✅ YOLO detector loaded successfully.")
     else:
-        print("⚠️ YOLO detector failed to load a model. YOLO features will be disabled.")
+        if ENABLE_LOGS:
+            print("⚠️ YOLO detector failed to load a model. YOLO features will be disabled.")
 except ImportError as e:
-    print(f"⚠️ YOLO detector could not be imported: {e}")
-    print("   YOLO features will be disabled.")
+    if ENABLE_LOGS:
+        print(f"⚠️ YOLO detector could not be imported: {e}")
+        print("   YOLO features will be disabled.")
     YOLO_AVAILABLE = False
     detector = None
 except Exception as e:
-    print(f"❌ An unexpected error occurred while loading the YOLO detector: {e}")
+    if ENABLE_LOGS:
+        print(f"❌ An unexpected error occurred while loading the YOLO detector: {e}")
     YOLO_AVAILABLE = False
     detector = None
 # --- Flask App Initialization ---
@@ -155,10 +161,12 @@ def save_yolo_detection(detection_data):
             )
             db.session.add(trajectory_point)
             db.session.commit()
-            # Debug log
-            print(f"✅ Detection saved: {detection_data['label']} (conf: {detection_data['confidence']:.2f}) at ({detection_data['x']:.1f}, {detection_data['y']:.1f})")
+            # Debug log (désactivé)
+            if ENABLE_LOGS:
+                print(f"✅ Detection saved: {detection_data['label']} (conf: {detection_data['confidence']:.2f}) at ({detection_data['x']:.1f}, {detection_data['y']:.1f})")
     except Exception as e:
-        print(f"❌ Error saving detection: {e}")
+        if ENABLE_LOGS:
+            print(f"❌ Error saving detection: {e}")
         db.session.rollback()
 
 # --- Set YOLO Callback if Available ---
@@ -625,7 +633,8 @@ def detect_frame():
         return jsonify({'detections': detections})
 
     except Exception as e:
-        print(f"Error processing frame: {e}")
+        if ENABLE_LOGS:
+            print(f"Error processing frame: {e}")
         return jsonify({'error': 'Failed to process frame'}), 500
 
 

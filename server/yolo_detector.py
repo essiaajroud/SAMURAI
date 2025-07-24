@@ -7,6 +7,23 @@ from datetime import datetime
 import threading
 import queue
 import numpy as np
+import sys
+import importlib.util
+
+# Importer la configuration des logs depuis app.py
+try:
+    # Vérifier si app est déjà importé
+    if 'app' in sys.modules:
+        from app import ENABLE_LOGS
+    else:
+        # Charger dynamiquement la variable ENABLE_LOGS depuis app.py
+        spec = importlib.util.spec_from_file_location("app", "app.py")
+        app_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(app_module)
+        ENABLE_LOGS = getattr(app_module, "ENABLE_LOGS", False)
+except ImportError:
+    # Si l'import échoue, désactiver les logs par défaut
+    ENABLE_LOGS = False
 
 # yolo_detector.py - YOLO object detection logic for the server
 # Handles model loading, video processing, streaming, and detection callbacks
@@ -38,14 +55,17 @@ class YOLODetector:
     def load_model(self):
         """Load the YOLO model (ONNX or PyTorch)."""
         if not os.path.exists(self.model_path):
-            print(f"❌ Model not found: {self.model_path}")
+            if ENABLE_LOGS:
+                print(f"❌ Model not found: {self.model_path}")
             self.model = None
             return
         try:
             self.model = YOLO(self.model_path, task="detect")
-            print(f"✅ Model loaded: {self.model_path}")
+            if ENABLE_LOGS:
+                print(f"✅ Model loaded: {self.model_path}")
         except Exception as e:
-            print(f"❌ Error loading model: {e}")
+            if ENABLE_LOGS:
+                print(f"❌ Error loading model: {e}")
             self.model = None
 
     def set_detection_callback(self, callback):
@@ -112,7 +132,8 @@ class YOLODetector:
             list: A list of detection dictionaries.
         """
         if self.model is None:
-            print("❌ Model not loaded")
+            if ENABLE_LOGS:
+                print("❌ Model not loaded")
             return []
         
         # We don't need the drawn frame here, just the detections.
@@ -127,7 +148,8 @@ class YOLODetector:
             stream_source (str): Path to the video or network URL.
             started_event (threading.Event): Event to signal when startup is complete.
         """
-        print(f"[YOLO] Attempting to open stream: {stream_source}")
+        if ENABLE_LOGS:
+            print(f"[YOLO] Attempting to open stream: {stream_source}")
         
         # Check if it's a file path that exists, otherwise assume it's a URL
         is_file = os.path.exists(stream_source)
@@ -135,34 +157,39 @@ class YOLODetector:
         try:
             cap = cv2.VideoCapture(stream_source)
             if not cap.isOpened():
-                print(f"❌ Unable to open stream source: {stream_source}")
+                if ENABLE_LOGS:
+                    print(f"❌ Unable to open stream source: {stream_source}")
                 started_event.set()  # Signal completion to unblock the caller
                 return
 
             self.is_running = True
             self.current_video = stream_source
             started_event.set()  # Signal successful start
-            print(f"🎬 Streaming started for: {stream_source}")
+            if ENABLE_LOGS:
+                print(f"🎬 Streaming started for: {stream_source}")
 
             while self.is_running:
                 ret, frame = cap.read()
                 if not ret:
                     if is_file: # If it's a file, loop it
-                        print("Looping video file...")
+                        if ENABLE_LOGS:
+                            print("Looping video file...")
                         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                         continue
                     else: # If it's a network stream and it ends, stop.
-                        print("Network stream ended.")
+                        if ENABLE_LOGS:
+                            print("Network stream ended.")
                         break
                 
                 # Execute detection
                 drawn_frame, detections = self._execute_detection(frame)
                 
                 # Debug log pour les détections
-                if detections:
-                    print(f"✅ Détections trouvées: {len(detections)} objets")
-                else:
-                    print("⚠️ Aucune détection trouvée dans cette frame")
+                if ENABLE_LOGS:
+                    if detections:
+                        print(f"✅ Détections trouvées: {len(detections)} objets")
+                    else:
+                        print("⚠️ Aucune détection trouvée dans cette frame")
 
                 # Put the processed frame into the queue for the web feed
                 if not self.frame_queue.full():
@@ -179,15 +206,16 @@ class YOLODetector:
             
         except Exception as e:
             error_message = str(e)
-            if "Connection" in error_message and "timed out" in error_message:
-                print(f"❌ Erreur de connexion au flux: Timeout. Vérifiez que l'appareil est accessible et que l'URL est correcte.")
-                print(f"   URL tentée: {stream_source}")
-                print(f"   Pour IP Webcam, essayez les formats: http://IP:PORT/video ou http://IP:PORT/videofeed")
-            elif "Connection" in error_message and "refused" in error_message:
-                print(f"❌ Connexion refusée. Vérifiez que le serveur est en cours d'exécution sur l'appareil cible.")
-                print(f"   URL tentée: {stream_source}")
-            else:
-                print(f"❌ Error during streaming: {e}")
+            if ENABLE_LOGS:
+                if "Connection" in error_message and "timed out" in error_message:
+                    print(f"❌ Erreur de connexion au flux: Timeout. Vérifiez que l'appareil est accessible et que l'URL est correcte.")
+                    print(f"   URL tentée: {stream_source}")
+                    print(f"   Pour IP Webcam, essayez les formats: http://IP:PORT/video ou http://IP:PORT/videofeed")
+                elif "Connection" in error_message and "refused" in error_message:
+                    print(f"❌ Connexion refusée. Vérifiez que le serveur est en cours d'exécution sur l'appareil cible.")
+                    print(f"   URL tentée: {stream_source}")
+                else:
+                    print(f"❌ Error during streaming: {e}")
         finally:
             if 'cap' in locals() and cap.isOpened():
                 cap.release()
@@ -196,12 +224,14 @@ class YOLODetector:
             # Clear the queue
             while not self.frame_queue.empty():
                 self.frame_queue.get()
-            print("🛑 Streaming finished")
+            if ENABLE_LOGS:
+                print("🛑 Streaming finished")
     
     def start_streaming(self, stream_source):
         """Starts streaming in a separate thread and waits for initialization."""
         if self.is_running:
-            print("🔄 Stopping previous stream...")
+            if ENABLE_LOGS:
+                print("🔄 Stopping previous stream...")
             self.stop_streaming()
             time.sleep(1)  # Give it a moment to fully stop
         
@@ -211,7 +241,8 @@ class YOLODetector:
         self.fps = 0
         self.inference_time_ms = 0
 
-        print(f"▶️ Starting YOLO stream with source: {stream_source}")
+        if ENABLE_LOGS:
+            print(f"▶️ Starting YOLO stream with source: {stream_source}")
         started_event = threading.Event()
         thread = threading.Thread(target=self._process_stream, args=(stream_source, started_event))
         thread.daemon = True
@@ -221,20 +252,24 @@ class YOLODetector:
         event_set = started_event.wait(timeout=10)  # 10-second timeout
 
         if not event_set:
-            print("❌ Timed out waiting for stream to initialize.")
+            if ENABLE_LOGS:
+                print("❌ Timed out waiting for stream to initialize.")
             self.is_running = False # Ensure state is correct
             return None
 
         if not self.is_running:
-            print("❌ Stream failed to start. Check video path and format.")
+            if ENABLE_LOGS:
+                print("❌ Stream failed to start. Check video path and format.")
             return None
 
-        print("✅ Stream successfully initialized.")
+        if ENABLE_LOGS:
+            print("✅ Stream successfully initialized.")
         return thread
     
     def stop_streaming(self):
         """Stops the stream."""
-        print("🛑 Stopping YOLO stream...")
+        if ENABLE_LOGS:
+            print("🛑 Stopping YOLO stream...")
         self.is_running = False
         
     def generate_stream_frames(self):
@@ -264,7 +299,8 @@ class YOLODetector:
                 # If the queue is empty, it might mean processing has stopped
                 # or is just slow. We check `is_running` to decide whether to continue.
                 if not self.is_running:
-                    print("Stream generation stopped as processing is no longer running.")
+                    if ENABLE_LOGS:
+                        print("Stream generation stopped as processing is no longer running.")
                     break
     
     def get_available_videos(self):
