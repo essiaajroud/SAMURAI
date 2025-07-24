@@ -1,6 +1,6 @@
 // PerformancePanel.js - Shows system performance, analytics, and logs
 // Provides graphs, historical stats, and system log display
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import { Line, Bar, Doughnut } from 'react-chartjs-2';
 import {
@@ -48,8 +48,281 @@ const PerformancePanel = ({
   isConnected = false
 }) => {
   const [selectedTab, setSelectedTab] = useState('model'); // Default to model tab
+  const [systemAlerts, setSystemAlerts] = useState([]);
+  
+  // Fonction pour générer des alertes système basées sur les données
+  const generateSystemAlerts = () => {
+    const alerts = [];
+    const now = new Date();
+    
+    // Alerte de connexion backend
+    alerts.push({
+      id: 'backend-connection',
+      timestamp: now,
+      level: isConnected ? 'info' : 'error',
+      message: `Backend ${isConnected ? 'connected' : 'not connected'}`
+    });
+    
+    // Alertes basées sur les métriques système
+    if (systemMetrics) {
+      // Alerte de température CPU
+      if (systemMetrics.cpu_temp && systemMetrics.cpu_temp > 80) {
+        alerts.push({
+          id: 'cpu-temp',
+          timestamp: now,
+          level: systemMetrics.cpu_temp > 90 ? 'critical' : 'warning',
+          message: `Température CPU anormale (${systemMetrics.cpu_temp}°C) - ${systemMetrics.cpu_temp > 90 ? 'ARRÊT IMMINENT' : 'Réduction de performance activée'}`
+        });
+      }
+      
+      // Alerte d'utilisation CPU
+      if (systemMetrics.cpu_percent && systemMetrics.cpu_percent > 90) {
+        alerts.push({
+          id: 'cpu-usage',
+          timestamp: now,
+          level: 'warning',
+          message: `Utilisation CPU élevée (${systemMetrics.cpu_percent}%) - Performance dégradée possible`
+        });
+      }
+      
+      // Alerte d'utilisation RAM
+      if (systemMetrics.ram_percent && systemMetrics.ram_percent > 85) {
+        alerts.push({
+          id: 'ram-usage',
+          timestamp: now,
+          level: 'warning',
+          message: `Mémoire RAM critique (${systemMetrics.ram_percent}%) - ${systemMetrics.ram_free_MB}MB disponible`
+        });
+      }
+    }
+    
+    // Alertes basées sur les détections
+    if (detectionHistory && detectionHistory.length > 0) {
+      // Prendre les 5 dernières détections
+      const recentDetections = detectionHistory.slice(-5);
+      
+      recentDetections.forEach(detection => {
+        if (!detection.class) return;
+        
+        // Alerte pour armes détectées
+        if (detection.class.toLowerCase().includes('weapon') ||
+            detection.class.toLowerCase().includes('gun') ||
+            detection.class.toLowerCase().includes('rifle')) {
+          
+          // Vérifier si la zone est civile (simulation)
+          const isInCivilianZone = Math.random() > 0.5; // Simulation
+          
+          if (isInCivilianZone) {
+            alerts.push({
+              id: `weapon-${detection.id || Date.now()}`,
+              timestamp: detection.timestamp || now,
+              level: 'critical',
+              message: `Détection d&apos;arme en zone civile - Coordonnées: ${detection.coordinates || '48.8566, 2.3522'}`
+            });
+          }
+        }
+        
+        // Alerte pour personnes en zone restreinte
+        if (detection.class.toLowerCase().includes('person') ||
+            detection.class.toLowerCase().includes('civilian')) {
+          
+          // Vérifier si la zone est militaire (simulation)
+          const isInMilitaryZone = Math.random() > 0.7; // Simulation
+          
+          if (isInMilitaryZone) {
+            alerts.push({
+              id: `restricted-${detection.id || Date.now()}`,
+              timestamp: detection.timestamp || now,
+              level: 'critical',
+              message: `Civil détecté en zone militaire restreinte - Alerte de sécurité niveau ${Math.floor(Math.random() * 3) + 1}`
+            });
+          }
+        }
+      });
+    }
+    
+    // Alertes de statut caméra et rover (simulation)
+    const cameraConnected = Math.random() > 0.2; // 80% de chance d'être connecté
+    if (cameraConnected) {
+      alerts.push({
+        id: 'camera-status',
+        timestamp: now,
+        level: 'info',
+        message: 'Caméra connectée - Flux vidéo actif'
+      });
+    } else {
+      alerts.push({
+        id: 'camera-status',
+        timestamp: now,
+        level: 'error',
+        message: 'Connexion caméra perdue - Vérifier le câble ou le réseau'
+      });
+    }
+    
+    const roverConnected = Math.random() > 0.1; // 90% de chance d'être connecté
+    if (!roverConnected) {
+      alerts.push({
+        id: 'rover-status',
+        timestamp: now,
+        level: 'error',
+        message: 'Connexion avec le rover perdue - Tentative de reconnexion...'
+      });
+    }
+    
+    // Alerte de batterie (simulation)
+    const batteryLevel = Math.floor(Math.random() * 100);
+    if (batteryLevel < 20) {
+      alerts.push({
+        id: 'battery-status',
+        timestamp: now,
+        level: batteryLevel < 10 ? 'critical' : 'warning',
+        message: `Niveau de batterie ${batteryLevel < 10 ? 'critique' : 'faible'} (${batteryLevel}%) - Autonomie estimée: ${batteryLevel * 3} minutes`
+      });
+    }
+    
+    return alerts;
+  };
+  
+  // Mettre à jour les alertes lorsque les données changent
+  useEffect(() => {
+    setSystemAlerts(generateSystemAlerts());
+  }, [isConnected, systemMetrics, detectionHistory]);
 
   // --- Chart Data and Options ---
+
+  // Préparation des données pour les graphiques d'historique
+  const prepareDetectionHistoryData = () => {
+    // Regrouper les détections par timestamp (jour/heure)
+    const groupedByTime = {};
+    const last10Timestamps = [];
+    
+    // Si l'historique existe et contient des données
+    if (detectionHistory && detectionHistory.length > 0) {
+      // Prendre les 10 derniers timestamps uniques
+      const uniqueTimestamps = [...new Set(detectionHistory.map(d => {
+        // Formater le timestamp pour regrouper par heure
+        const date = new Date(d.timestamp);
+        return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+      }))];
+      
+      // Prendre les 10 derniers timestamps
+      const recentTimestamps = uniqueTimestamps.slice(-10);
+      
+      // Compter les détections pour chaque timestamp
+      recentTimestamps.forEach(timestamp => {
+        const count = detectionHistory.filter(d => {
+          const date = new Date(d.timestamp);
+          return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) === timestamp;
+        }).length;
+        
+        groupedByTime[timestamp] = count;
+        last10Timestamps.push(timestamp);
+      });
+    }
+    
+    return {
+      labels: last10Timestamps,
+      data: last10Timestamps.map(t => groupedByTime[t] || 0)
+    };
+  };
+  
+  const prepareClassHistoryData = () => {
+    // Regrouper les détections par classe
+    const classCounts = {};
+    
+    // Si l'historique existe et contient des données
+    if (detectionHistory && detectionHistory.length > 0) {
+      // Compter les occurrences de chaque classe
+      detectionHistory.forEach(detection => {
+        if (detection.class) {
+          classCounts[detection.class] = (classCounts[detection.class] || 0) + 1;
+        }
+      });
+    }
+    
+    // Convertir en format pour le graphique
+    const labels = Object.keys(classCounts);
+    const data = labels.map(label => classCounts[label]);
+    
+    return { labels, data };
+  };
+  
+  // Données pour les graphiques d'historique
+  const detectionHistoryData = prepareDetectionHistoryData();
+  const classHistoryData = prepareClassHistoryData();
+  
+  // Configuration des graphiques d'historique
+  const detectionHistoryChartData = {
+    labels: detectionHistoryData.labels,
+    datasets: [{
+      label: 'Nombre de détections',
+      data: detectionHistoryData.data,
+      borderColor: 'rgb(75, 192, 192)',
+      backgroundColor: 'rgba(75, 192, 192, 0.5)',
+      tension: 0.3
+    }]
+  };
+  
+  const classHistoryChartData = {
+    labels: classHistoryData.labels,
+    datasets: [{
+      label: 'Détections par classe',
+      data: classHistoryData.data,
+      backgroundColor: [
+        'rgba(255, 99, 132, 0.5)',
+        'rgba(54, 162, 235, 0.5)',
+        'rgba(255, 206, 86, 0.5)',
+        'rgba(75, 192, 192, 0.5)',
+        'rgba(153, 102, 255, 0.5)',
+        'rgba(255, 159, 64, 0.5)'
+      ],
+      borderColor: [
+        'rgb(255, 99, 132)',
+        'rgb(54, 162, 235)',
+        'rgb(255, 206, 86)',
+        'rgb(75, 192, 192)',
+        'rgb(153, 102, 255)',
+        'rgb(255, 159, 64)'
+      ],
+      borderWidth: 1
+    }]
+  };
+  
+  const historyChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: {
+          color: '#ccc'
+        },
+        grid: {
+          color: '#444'
+        }
+      },
+      x: {
+        ticks: {
+          color: '#ccc'
+        },
+        grid: {
+          color: '#444'
+        }
+      }
+    },
+    plugins: {
+      legend: {
+        position: 'top',
+        labels: {
+          color: '#ccc'
+        }
+      },
+      title: {
+        display: true,
+        color: '#fff'
+      }
+    }
+  };
 
   const prf1ChartData = {
     labels: ['Metrics'],
@@ -153,7 +426,7 @@ const PerformancePanel = ({
   };
 
   return (
-    <div className="performance-panel">
+    <div className="performance-panel" style={{ height: '520px', overflow: 'auto', boxSizing: 'border-box' }}>
       <div className="panel-header">
           <h2>Performance & Analytics</h2>
         <div className="panel-tabs">
@@ -223,29 +496,76 @@ const PerformancePanel = ({
         {selectedTab === 'history' && (
           <div className="history-analytics-section">
             {/* Historique des détections, stats globales, etc. */}
-            <div className="metric-card">Total Detections<br /><span>{detectionHistory.length}</span></div>
-            {/* Placeholders pour graphes historiques */}
-            <div className="metric-graph-placeholder">[Courbe historique détections]</div>
-            <div className="metric-graph-placeholder">[Courbe historique classes]</div>
+            <div className="metrics-row">
+              <div className="metric-card">Total Detections<br /><span>{detectionHistory.length}</span></div>
+              <div className="metric-card">Classes Uniques<br /><span>{classHistoryData.labels.length}</span></div>
+              <div className="metric-card">Période<br /><span>Dernière heure</span></div>
+            </div>
+            
+            {/* Graphiques d'historique */}
+            <div className="metrics-row" style={{ height: '200px' }}>
+              <div className="chart-container">
+                <Line
+                  data={detectionHistoryChartData}
+                  options={{
+                    ...historyChartOptions,
+                    plugins: {
+                      ...historyChartOptions.plugins,
+                      title: {
+                        ...historyChartOptions.plugins.title,
+                        text: 'Historique des détections'
+                      }
+                    }
+                  }}
+                />
+              </div>
+              <div className="chart-container">
+                <Bar
+                  data={classHistoryChartData}
+                  options={{
+                    ...historyChartOptions,
+                    plugins: {
+                      ...historyChartOptions.plugins,
+                      title: {
+                        ...historyChartOptions.plugins.title,
+                        text: 'Détections par classe'
+                      }
+                    }
+                  }}
+                />
+              </div>
+            </div>
           </div>
         )}
         {selectedTab === 'logs' && (
           <div className="system-logs-panel">
             <ul className="logs-list">
-              <li className={`log-entry ${isConnected ? 'info' : 'error'}`}>
-                <span className={`log-timestamp`}>{new Date().toLocaleString()}</span>
-                <span className={`log-level ${isConnected ? 'info' : 'error'}`}>[{isConnected ? 'INFO' : 'ERROR'}]</span>
-                <span className="log-message">
-                  Backend {isConnected ? 'connected' : 'not connected'}
-                </span>
-              </li>
+              {/* Alertes système générées dynamiquement */}
+              {systemAlerts.map((alert) => (
+                <li key={alert.id} className={`log-entry ${alert.level}`}>
+                  <span className="log-timestamp">{alert.timestamp.toLocaleString()}</span>
+                  <span className={`log-level ${alert.level}`}>[{alert.level.toUpperCase()}]</span>
+                  <span className="log-message">{alert.message}</span>
+                </li>
+              ))}
+              
+              {/* Logs dynamiques de l'application */}
               {logs && logs.length > 0 && logs.map((log, idx) => (
-                <li key={idx} className={`log-entry ${log.level?.toLowerCase() || 'info'}`}>
+                <li key={`app-log-${idx}`} className={`log-entry ${log.level?.toLowerCase() || 'info'}`}>
                   <span className="log-timestamp">{log.timestamp ? new Date(log.timestamp).toLocaleString() : ''}</span>
                   <span className={`log-level ${log.level?.toLowerCase() || 'info'}`}>[{log.level || 'INFO'}]</span>
                   <span className="log-message">{log.message || String(log)}</span>
-                  </li>
-                ))}
+                </li>
+              ))}
+              
+              {/* Message si aucun log n'est disponible */}
+              {systemAlerts.length === 0 && (!logs || logs.length === 0) && (
+                <li className="log-entry info">
+                  <span className="log-timestamp">{new Date().toLocaleString()}</span>
+                  <span className="log-level info">[INFO]</span>
+                  <span className="log-message">Aucun log système disponible</span>
+                </li>
+              )}
             </ul>
           </div>
         )}

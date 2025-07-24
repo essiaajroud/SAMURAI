@@ -127,7 +127,7 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], trajectoryHist
 
   // --- Render ---
   return (
-    <div className="detection-panel">
+    <div className="detection-panel" style={{ height: '520px', overflow: 'auto', boxSizing: 'border-box' }}>
       {/* Panel header with export and filters */}
       <div className="panel-header">
         <div className="header-top">
@@ -214,7 +214,7 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], trajectoryHist
         </div>
       </div>
       {/* Panel content for current, history, and trajectories */}
-      <div className="panel-content">
+      <div className="panel-content" style={{ height: 'calc(100% - 170px)', overflow: 'auto' }}>
         {activeTab === 'current' && (
           <div className="detections-table">
             <table>

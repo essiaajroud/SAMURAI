@@ -18,7 +18,7 @@ function App() {
   const [isConnected, setIsConnected] = useState(false); // Backend connection status
   const [isDetectionStarted, setIsDetectionStarted] = useState(false);
   const [sourceType, setSourceType] = useState('video'); // Default to video
-  const [networkUrl, setNetworkUrl] = useState('');
+  const [networkUrl, setNetworkUrl] = useState('http://192.168.1.16:8080/video'); // Format pour IP Webcam
 
   const [performanceData, setPerformanceData] = useState({});
   const [systemMetricsHistory, setSystemMetricsHistory] = useState([]);
@@ -29,7 +29,7 @@ function App() {
   const [currentDetections, setCurrentDetections] = useState([]); // Current detections
   const [logs, setLogs] = useState([]); // System logs
   const [videos, setVideos] = useState([]); // Available videos
-  const [selectedVideo, setSelectedVideo] = useState(''); // Selected video
+  const [selectedVideo, setSelectedVideo] = useState('war.mp4'); // Selected video par défaut
 
   // --- Inline Styles ---
   const appStyle = {
@@ -282,13 +282,22 @@ function App() {
       loadPerformanceData();
       loadDetectionHistory(); // Also refresh history
       // Refresh every second
-      const interval = setInterval(() => {
+      // Récupérer les détections plus fréquemment pour une meilleure réactivité
+      const detectionInterval = setInterval(() => {
         loadCurrentDetections();
+      }, 200); // 5 fois par seconde
+      
+      // Récupérer les autres données moins fréquemment
+      const metricsInterval = setInterval(() => {
         loadPerformanceData();
         loadDetectionHistory();
         loadSystemMetrics();
       }, 1000);
-      return () => clearInterval(interval);
+      
+      return () => {
+        clearInterval(detectionInterval);
+        clearInterval(metricsInterval);
+      };
     }
   }, [isConnected, systemStatus, loadCurrentDetections, loadPerformanceData, loadDetectionHistory, loadSystemMetrics]);
 
@@ -311,17 +320,18 @@ function App() {
         setIsPlaying(false);
         setSystemStatus('stopped');
         setCurrentDetections([]);
+        return { success: true };
       } catch (error) {
         console.error('Error stopping detection:', error);
+        return { error: `Erreur lors de l'arrêt de la détection: ${error.message}` };
       }
-      return;
     }
 
     // Start logic
     const isReadyToStart = (sourceType === 'video' && selectedVideo) || (sourceType === 'network' && networkUrl);
     if (!isReadyToStart) {
       console.warn('Cannot start: No video selected or network URL provided.');
-      return;
+      return { error: 'Aucune vidéo sélectionnée ou URL réseau fournie.' };
     }
 
     try {
@@ -339,12 +349,18 @@ function App() {
         setIsDetectionStarted(true);
         setIsPlaying(true);
         setSystemStatus('running');
+        return { success: true };
       } else {
         const errorData = await response.json();
         console.error('Failed to start streaming:', errorData.error);
+        return {
+          error: errorData.error || 'Échec du démarrage du flux vidéo',
+          details: errorData.last_logs
+        };
       }
     } catch (error) {
       console.error('Error starting detection:', error);
+      return { error: `Erreur lors du démarrage de la détection: ${error.message}` };
     }
   }, [isDetectionStarted, sourceType, selectedVideo, networkUrl, setCurrentDetections]);
 

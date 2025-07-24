@@ -156,7 +156,13 @@ class YOLODetector:
                         break
                 
                 # Execute detection
-                drawn_frame, _ = self._execute_detection(frame)
+                drawn_frame, detections = self._execute_detection(frame)
+                
+                # Debug log pour les détections
+                if detections:
+                    print(f"✅ Détections trouvées: {len(detections)} objets")
+                else:
+                    print("⚠️ Aucune détection trouvée dans cette frame")
 
                 # Put the processed frame into the queue for the web feed
                 if not self.frame_queue.full():
@@ -172,7 +178,16 @@ class YOLODetector:
                     self.fps = (len(self._frame_times) - 1) / time_diff if time_diff > 0 else 0
             
         except Exception as e:
-            print(f"❌ Error during streaming: {e}")
+            error_message = str(e)
+            if "Connection" in error_message and "timed out" in error_message:
+                print(f"❌ Erreur de connexion au flux: Timeout. Vérifiez que l'appareil est accessible et que l'URL est correcte.")
+                print(f"   URL tentée: {stream_source}")
+                print(f"   Pour IP Webcam, essayez les formats: http://IP:PORT/video ou http://IP:PORT/videofeed")
+            elif "Connection" in error_message and "refused" in error_message:
+                print(f"❌ Connexion refusée. Vérifiez que le serveur est en cours d'exécution sur l'appareil cible.")
+                print(f"   URL tentée: {stream_source}")
+            else:
+                print(f"❌ Error during streaming: {e}")
         finally:
             if 'cap' in locals() and cap.isOpened():
                 cap.release()
@@ -227,7 +242,18 @@ class YOLODetector:
         while self.is_running:
             try:
                 frame = self.frame_queue.get(timeout=1)
-                ret, jpeg = cv2.imencode('.jpg', frame)
+                
+                # Réduire la taille de l'image pour améliorer les performances
+                scale_percent = 70  # pourcentage de la taille originale
+                width = int(frame.shape[1] * scale_percent / 100)
+                height = int(frame.shape[0] * scale_percent / 100)
+                dim = (width, height)
+                resized_frame = cv2.resize(frame, dim, interpolation=cv2.INTER_AREA)
+                
+                # Réduire la qualité de l'image pour améliorer les performances
+                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 80]
+                ret, jpeg = cv2.imencode('.jpg', resized_frame, encode_param)
+                
                 if not ret:
                     continue
                 

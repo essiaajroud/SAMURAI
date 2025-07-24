@@ -63,7 +63,7 @@ body {
 
 .bottom-panel {
   flex-shrink: 0;
-  height: 500px;
+  height: 530px;
   min-height: 400px;
 }
 

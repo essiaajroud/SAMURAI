@@ -351,6 +351,25 @@
   background: rgba(255, 68, 68, 0.05);
 }
 
+.log-entry.critical {
+  border-left: 3px solid #ff0000;
+  padding-left: 12px;
+  background: rgba(255, 0, 0, 0.1);
+  animation: pulse-critical 2s infinite;
+}
+
+@keyframes pulse-critical {
+  0% {
+    background: rgba(255, 0, 0, 0.1);
+  }
+  50% {
+    background: rgba(255, 0, 0, 0.2);
+  }
+  100% {
+    background: rgba(255, 0, 0, 0.1);
+  }
+}
+
 .log-timestamp {
   color: #888;
   min-width: 80px;
@@ -383,6 +402,27 @@
   color: #ff4444;
   background: rgba(255, 68, 68, 0.1);
   border: 1px solid #ff4444;
+}
+
+.log-level.critical {
+  color: #ff0000;
+  background: rgba(255, 0, 0, 0.15);
+  border: 1px solid #ff0000;
+  font-weight: bold;
+  text-transform: uppercase;
+  animation: pulse-text 2s infinite;
+}
+
+@keyframes pulse-text {
+  0% {
+    text-shadow: 0 0 2px rgba(255, 0, 0, 0.5);
+  }
+  50% {
+    text-shadow: 0 0 8px rgba(255, 0, 0, 0.8);
+  }
+  100% {
+    text-shadow: 0 0 2px rgba(255, 0, 0, 0.5);
+  }
 }
 
 .log-message {
@@ -435,9 +475,21 @@
 
 .metrics-row {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 18px;
   margin-bottom: 18px;
+  justify-content: center;
+}
+
+/* Style pour les conteneurs de graphiques */
+.chart-container {
+  flex: 1;
+  max-width: 30%;
+  min-width: 200px;
+  margin: 0 15px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .metric-card {
@@ -513,4 +565,8 @@
     min-width: 100px;
     font-size: 13px;
   }
-} 
+  .chart-container {
+    max-width: 100%;
+    margin: 10px 0;
+  }
+}

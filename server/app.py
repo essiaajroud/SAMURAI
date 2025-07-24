@@ -565,9 +565,28 @@ def start_streaming():
         thread = detector.start_streaming(stream_source)
 
         if thread is None:
+            # Récupérer les dernières lignes du log pour trouver l'erreur
+            import subprocess
+            try:
+                # Essayer de récupérer les dernières lignes du log
+                last_logs = subprocess.check_output("tail -n 10 server.log", shell=True).decode('utf-8')
+            except:
+                last_logs = "Impossible de lire les logs"
+            
+            # Message d'erreur détaillé
+            error_message = "Échec du démarrage du flux. "
+            if "Connection" in last_logs and "timed out" in last_logs:
+                error_message += "Timeout de connexion. Vérifiez que l'appareil est accessible et que l'URL est correcte."
+            elif "Connection" in last_logs and "refused" in last_logs:
+                error_message += "Connexion refusée. Vérifiez que le serveur est en cours d'exécution sur l'appareil cible."
+            else:
+                error_message += "Consultez les logs du serveur pour plus de détails."
+            
             return jsonify({
-                'error': 'Failed to start stream. Check server logs for details.',
-                'is_running': False
+                'error': error_message,
+                'is_running': False,
+                'stream_source': stream_source,
+                'last_logs': last_logs
             }), 500
         
         return jsonify({
@@ -898,9 +917,9 @@ def get_current_detections():
     """
     try:
         # Dynamic filtering parameters
-        limit = int(request.args.get('limit', 10))
+        limit = int(request.args.get('limit', 30))  # Augmenter la limite pour plus de détections
         confidence_threshold = float(request.args.get('confidence', 0.0))
-        time_window = int(request.args.get('time_window', 5))  # X seconds of detections
+        time_window = int(request.args.get('time_window', 10))  # Augmenter la fenêtre de temps
         
         # Calculate time window
         now = datetime.now(timezone.utc)

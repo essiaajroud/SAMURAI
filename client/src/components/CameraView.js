@@ -62,6 +62,7 @@ const CameraView = ({
   // This component is now mostly controlled by App.js
   // Local state can be for UI feedback, like loading, if needed.
   const [loading, setLoading] = useState(false); // Can still be useful for local UI feedback
+  const [errorMessage, setErrorMessage] = useState(''); // Pour afficher les messages d'erreur
 
   // --- HOOKS ---
 
@@ -80,8 +81,19 @@ const CameraView = ({
   // The main detection handler is now passed from App.js
   const handleStartStopClick = async () => {
     setLoading(true);
-    await onStartStopDetection();
-    setLoading(false);
+    setErrorMessage(''); // Réinitialiser le message d'erreur
+    
+    try {
+      const result = await onStartStopDetection();
+      // Si onStartStopDetection renvoie un objet avec une erreur, l'afficher
+      if (result && result.error) {
+        setErrorMessage(result.error);
+      }
+    } catch (error) {
+      setErrorMessage(`Erreur: ${error.message || 'Impossible de démarrer la détection'}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Polling logic is now in App.js, so this useEffect is no longer needed here.
@@ -125,7 +137,7 @@ const CameraView = ({
              id="network-url"
              value={networkUrl}
              onChange={e => setNetworkUrl(e.target.value)}
-             placeholder="e.g., http://192.168.1.100:8080"
+             placeholder="e.g., http://192.168.1.100:8080/video"
              disabled={isDetectionStarted}
              style={{ marginLeft: 18 }}
            />
@@ -152,10 +164,15 @@ const CameraView = ({
       </div>
       <div className="status-bar">
         {loading && <span className="status-message">Processing...</span>}
+        {errorMessage && (
+          <div className="error-message" style={{ color: '#ff5555', padding: '8px', margin: '5px 0', backgroundColor: 'rgba(255,0,0,0.1)', borderRadius: '4px' }}>
+            <strong>Erreur:</strong> {errorMessage}
+          </div>
+        )}
       </div>
 
       {/* Video feed and detection overlay */}
-      <div className="video-container">
+      <div className="video-container" style={{ height: '520px', width: '100%', minHeight: '520px', boxSizing: 'border-box' }}>
         {/* Server-processed Feed (for Video and Network Camera) */}
         {isDetectionStarted && (
           <img
