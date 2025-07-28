@@ -22,7 +22,7 @@ import random
 
 
 # Configuration pour les logs
-ENABLE_LOGS = False  # Désactive l'affichage des logs
+ENABLE_LOGS = True  # Active l'affichage des logs pour le diagnostic
 
 # --- YOLO Detector Initialization ---
 try:
@@ -780,24 +780,46 @@ def get_performance():
         })
 
     # Get metrics from the detector
-    perf_metrics = detector.get_performance_metrics()
+    perf_metrics = detector.get_performance_metrics() if hasattr(detector, 'get_performance_metrics') else {}
 
     # Get object count from the database (last 2 seconds for a more "current" feel)
     now = datetime.now(timezone.utc)
     two_seconds_ago = now - timedelta(seconds=2)
     object_count = db.session.query(Detection.object_id).filter(Detection.timestamp >= two_seconds_ago).distinct().count()
 
-    # Add simulated metrics for now
-    perf_metrics['detectionRate'] = 98.5 + random.uniform(-1.5, 1.5)
-    perf_metrics['precision'] = 95.2 + random.uniform(-2.0, 2.0)
-    perf_metrics['recall'] = 97.0 + random.uniform(-1.0, 1.0)
-    perf_metrics['f1Score'] = 2 * (perf_metrics['precision'] * perf_metrics['recall']) / (perf_metrics['precision'] + perf_metrics['recall']) if (perf_metrics['precision'] + perf_metrics['recall']) > 0 else 0
-    perf_metrics['idSwitchCount'] = random.randint(0, 5)
-    perf_metrics['mota'] = 85.1 + random.uniform(-2.0, 2.0)
-    perf_metrics['motp'] = 78.3 + random.uniform(-1.5, 1.5)
+    # Tracking metrics from DB (fragmentation, persistence, id switches)
+    # Fragmentation: tracks < 10 frames, Persistence: tracks > 60 frames
+    tracks = db.session.query(Trajectory).all()
+    lifetimes = []
+    for t in tracks:
+        points = db.session.query(TrajectoryPoint).filter_by(trajectory_id=t.id).order_by(TrajectoryPoint.timestamp).all()
+        lifetimes.append(len(points))
+    short_tracks = sum(1 for l in lifetimes if l < 10)
+    long_tracks = sum(1 for l in lifetimes if l > 60)
+    fragmentation_rate = short_tracks / len(lifetimes) if lifetimes else 0
+    persistence_score = long_tracks / len(lifetimes) if lifetimes else 0
+    avg_track_lifetime = float(np.mean(lifetimes)) if lifetimes else 0
+    median_track_lifetime = float(np.median(lifetimes)) if lifetimes else 0
+    total_tracks = len(lifetimes)
+
+    # ID switches: nombre d'objets avec plusieurs trajectoires (même label, id différent)
+    # (approximation simple)
+    label_id_map = {}
+    for t in tracks:
+        key = (t.label, t.object_id)
+        label_id_map.setdefault(t.label, set()).add(t.object_id)
+    id_switches = sum(len(ids) for ids in label_id_map.values() if len(ids) > 1)
+
+    # Ajout des métriques au dictionnaire
     perf_metrics['objectCount'] = object_count
-    
-    # Use hasattr for safety, as the error is mysterious
+    perf_metrics['fragmentationRate'] = fragmentation_rate
+    perf_metrics['persistenceScore'] = persistence_score
+    perf_metrics['avgTrackLifetime'] = avg_track_lifetime
+    perf_metrics['medianTrackLifetime'] = median_track_lifetime
+    perf_metrics['totalTracks'] = total_tracks
+    perf_metrics['idSwitches'] = id_switches
+
+    # Use hasattr for safety
     if hasattr(detector, 'get_objects_by_class'):
         perf_metrics['objectsByClass'] = getattr(detector, 'get_objects_by_class')()
     else:

@@ -524,3 +524,44 @@
   background: #00cc00;
   box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
 } 
+
+.trajectories-table {
+  flex: 1;
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  padding: 8px;
+  max-height: 400px;
+}
+
+.trajectories-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.trajectories-table th {
+  background: rgba(42, 42, 42, 0.9);
+  color: #00ff00;
+  padding: 8px 6px;
+  text-align: left;
+  border-bottom: 1px solid #444;
+  position: sticky;
+  top: 0;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  backdrop-filter: blur(5px);
+}
+
+.trajectories-table td {
+  padding: 6px 6px;
+  border-bottom: 1px solid #333;
+  transition: background 0.3s ease;
+  color: #fff;
+  font-size: 11px;
+}
+
+.trajectories-table tr:hover {
+  background: rgba(0, 255, 0, 0.1);
+}

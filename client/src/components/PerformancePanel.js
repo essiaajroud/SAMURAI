@@ -218,25 +218,39 @@ const PerformancePanel = ({
     };
   };
   
+  // Nouvelle version : courbe multi-classes par timestamp
   const prepareClassHistoryData = () => {
-    // Regrouper les détections par classe
-    const classCounts = {};
-    
-    // Si l'historique existe et contient des données
+    // Récupérer la liste des classes connues (mêmes que MapDemo)
+    const knownClasses = [
+      'person', 'soldier', 'weapon', 'military_vehicles', 'civilian_vehicles', 'military_aircraft', 'civilian_aircraft'
+    ];
+    // Grouper les détections par timestamp (arrondi à la minute)
+    const timeStep = 60 * 1000; // 1 min
+    const grouped = {};
     if (detectionHistory && detectionHistory.length > 0) {
-      // Compter les occurrences de chaque classe
-      detectionHistory.forEach(detection => {
-        if (detection.class) {
-          classCounts[detection.class] = (classCounts[detection.class] || 0) + 1;
-        }
+      detectionHistory.forEach(d => {
+        const t = d.timestamp ? Math.floor(Number(d.timestamp) / timeStep) * timeStep : 0;
+        const cls = d.label || d.class || 'unknown';
+        if (!grouped[t]) grouped[t] = {};
+        grouped[t][cls] = (grouped[t][cls] || 0) + 1;
       });
     }
-    
-    // Convertir en format pour le graphique
-    const labels = Object.keys(classCounts);
-    const data = labels.map(label => classCounts[label]);
-    
-    return { labels, data };
+    // Générer les labels temporels (X)
+    const allTimestamps = Object.keys(grouped).map(Number).sort((a, b) => a - b);
+    // Générer les datasets par classe
+    const datasets = knownClasses.map((cls, idx) => ({
+      label: cls,
+      data: allTimestamps.map(t => grouped[t]?.[cls] || 0),
+      borderColor: `hsl(${(idx * 360) / knownClasses.length}, 70%, 50%)`,
+      backgroundColor: `hsl(${(idx * 360) / knownClasses.length}, 70%, 80%)`,
+      tension: 0.3
+    }));
+    // Labels X en format lisible
+    const labels = allTimestamps.map(t => {
+      const d = new Date(t);
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    });
+    return { labels, datasets };
   };
   
   // Données pour les graphiques d'historique
@@ -244,40 +258,10 @@ const PerformancePanel = ({
   const classHistoryData = prepareClassHistoryData();
   
   // Configuration des graphiques d'historique
-  const detectionHistoryChartData = {
-    labels: detectionHistoryData.labels,
-    datasets: [{
-      label: 'Nombre de détections',
-      data: detectionHistoryData.data,
-      borderColor: 'rgb(75, 192, 192)',
-      backgroundColor: 'rgba(75, 192, 192, 0.5)',
-      tension: 0.3
-    }]
-  };
-  
+  // Multi courbe par classe
   const classHistoryChartData = {
     labels: classHistoryData.labels,
-    datasets: [{
-      label: 'Détections par classe',
-      data: classHistoryData.data,
-      backgroundColor: [
-        'rgba(255, 99, 132, 0.5)',
-        'rgba(54, 162, 235, 0.5)',
-        'rgba(255, 206, 86, 0.5)',
-        'rgba(75, 192, 192, 0.5)',
-        'rgba(153, 102, 255, 0.5)',
-        'rgba(255, 159, 64, 0.5)'
-      ],
-      borderColor: [
-        'rgb(255, 99, 132)',
-        'rgb(54, 162, 235)',
-        'rgb(255, 206, 86)',
-        'rgb(75, 192, 192)',
-        'rgb(153, 102, 255)',
-        'rgb(255, 159, 64)'
-      ],
-      borderWidth: 1
-    }]
+    datasets: classHistoryData.datasets
   };
   
   const historyChartOptions = {
@@ -498,7 +482,16 @@ const PerformancePanel = ({
             <div className="metrics-row" style={{ height: '200px' }}>
               <div className="chart-container">
                 <Line
-                  data={detectionHistoryChartData}
+                  data={{
+                    labels: detectionHistoryData.labels,
+                    datasets: [{
+                      label: 'Total Detections',
+                      data: detectionHistoryData.data,
+                      borderColor: 'rgb(54, 162, 235)',
+                      backgroundColor: 'rgba(54, 162, 235, 0.3)',
+                      tension: 0.3
+                    }]
+                  }}
                   options={{
                     ...historyChartOptions,
                     plugins: {

@@ -75,15 +75,29 @@ class YOLODetector:
     def _execute_detection(self, frame):
         """
         Executes YOLO detection on a single frame and returns drawn frame and detections.
+        Ajoute le calcul de la distance réelle caméra-objet.
         """
         if self.model is None:
             return frame, []
+
+        # Paramètres caméra (à ajuster selon ton setup)
+        FOCAL_LENGTH_PX = 800  # focale en pixels (exemple)
+        # Tailles réelles moyennes (en mètres) pour chaque classe
+        REAL_SIZES = {
+            'person': 1.7,
+            'soldier': 1.7,
+            'weapon': 1.0,
+            'military_vehicles': 3.0,
+            'civilian_vehicles': 4.5,
+            'military_aircraft': 15.0,
+            'civilian_aircraft': 20.0
+        }
 
         start_time = time.time()
         results = self.model(frame, conf=self.confidence_threshold, verbose=False)
         end_time = time.time()
         self.inference_time_ms = (end_time - start_time) * 1000
-        
+
         detections = []
         for result in results:
             boxes = result.boxes
@@ -93,22 +107,27 @@ class YOLODetector:
                     cls = int(box.cls[0].cpu().numpy())
                     conf = float(box.conf[0].cpu().numpy())
                     class_name = result.names[cls]
-            
-                    # Create detection object
+
+                    # Calcul de la distance réelle (si taille connue)
+                    pixel_height = y2 - y1
+                    real_height = REAL_SIZES.get(class_name, 1.7)  # défaut: 1.7m
+                    distance = (real_height * FOCAL_LENGTH_PX) / (pixel_height + 1e-6)  # +1e-6 pour éviter div/0
+
                     detection_data = {
                         'label': class_name,
                         'confidence': conf,
                         'x': (x1 + x2) / 2,
                         'y': (y1 + y2) / 2,
                         'width': x2 - x1,
-                        'height': y2 - y1,
+                        'height': pixel_height,
+                        'distance': float(distance),
                         'timestamp': datetime.now().isoformat()
                     }
                     detections.append(detection_data)
-                    
+
                     # Update objects by class count
                     self.objects_by_class[class_name] = self.objects_by_class.get(class_name, 0) + 1
-                    
+
                     # Draw on the frame
                     cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
                     cv2.putText(frame, f'{class_name} {conf:.2f}',
@@ -120,7 +139,7 @@ class YOLODetector:
             for i, det in enumerate(detections):
                 det['id'] = int(time.time() * 1000) + i # pseudo-unique ID
                 self.detection_callback(det)
-        
+
         return frame, detections
 
     def process_frame(self, frame_np):

@@ -1,5 +1,3 @@
-// DetectionPanel.js - Shows current, historical, and trajectory detection data
-// Provides filtering, export, and analytics for detections
 import React, { useState, useMemo } from 'react';
 import './DetectionPanel.css';
 import PropTypes from 'prop-types';
@@ -289,31 +287,28 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], trajectoryHist
         )}
         {activeTab === 'trajectories' && (
           <div className="trajectories-table">
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Label</th>
-                  <th>Duration (s)</th>
-                  <th>Total Distance</th>
-                  <th>Avg Speed</th>
-                  <th>Points</th>
-                </tr>
-              </thead>
-              <tbody>
-                {trajectoryAnalysis.map((traj, index) => (
-                  <tr key={index}>
-                    <td>{traj.id}</td>
-                    <td>{traj.label}</td>
-                    <td>{(traj.duration / 1000).toFixed(1)}</td>
-                    <td>{traj.totalDistance.toFixed(1)}</td>
-                    <td>{traj.avgSpeed.toFixed(2)}</td>
-                    <td>{traj.pointCount}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Label</th>
+              <th>Duration (s)</th>
+              <th>Total Distance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {trajectoryAnalysis.map((traj, index) => (
+              <tr key={index}>
+                <td>{traj.id}</td>
+                <td>{traj.label}</td>
+                <td>{(traj.duration / 1000).toFixed(1)}</td>
+                <td>{traj.totalDistance.toFixed(1)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
         )}
       </div>
     </div>
