@@ -817,7 +817,9 @@ def get_performance():
     perf_metrics['avgTrackLifetime'] = avg_track_lifetime
     perf_metrics['medianTrackLifetime'] = median_track_lifetime
     perf_metrics['totalTracks'] = total_tracks
-    perf_metrics['idSwitches'] = id_switches
+    # Overwrite with tracker value if available
+    if 'idSwitchCount' in perf_metrics:
+        perf_metrics['idSwitches'] = perf_metrics['idSwitchCount']
 
     # Use hasattr for safety
     if hasattr(detector, 'get_objects_by_class'):

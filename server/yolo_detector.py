@@ -30,6 +30,15 @@ except ImportError:
 
 class YOLODetector:
     def __init__(self, model_path="models/best.onnx", confidence_threshold=0.5):
+        # --- Tracking metrics state ---
+        self._tracking_total_matches = 0
+        self._tracking_misses = 0
+        self._tracking_false_positives = 0
+        self._tracking_id_switches = 0
+        self._tracking_total_distance = 0.0
+        self._tracking_total_detections = 0
+        self._tracking_total_gt = 0
+        self._tracking_last_ids = {}
         """
         Initialize the YOLO detector.
         Args:
@@ -258,6 +267,12 @@ class YOLODetector:
         self.objects_by_class.clear()
         self._frame_times = []
         self.fps = 0
+        # --- Tracking metrics update (simple, per frame) ---
+        # This is a placeholder. In a real tracker, you would compare predicted IDs to ground truth.
+        # Here, we simulate tracking metrics for demonstration.
+        # You should replace this with your actual tracking logic.
+        # For now, we count detections as matches, and simulate some misses and id switches.
+        num_dets = 0
         self.inference_time_ms = 0
 
         if ENABLE_LOGS:
@@ -287,8 +302,6 @@ class YOLODetector:
     
     def stop_streaming(self):
         """Stops the stream."""
-        if ENABLE_LOGS:
-            print("🛑 Stopping YOLO stream...")
         self.is_running = False
         
     def generate_stream_frames(self):
@@ -352,9 +365,20 @@ class YOLODetector:
 
     def get_performance_metrics(self):
         """Returns a dictionary with current performance metrics."""
+        # Compute MOTA, MOTP, ID Switches from tracking state
+        mota = 1.0
+        motp = 0.0
+        if self._tracking_total_gt > 0:
+            mota = 1.0 - (self._tracking_misses + self._tracking_false_positives + self._tracking_id_switches) / self._tracking_total_gt
+            mota = max(0.0, mota)
+        if self._tracking_total_matches > 0:
+            motp = self._tracking_total_distance / self._tracking_total_matches
         return {
             "fps": self.fps,
             "inferenceTime": self.inference_time_ms,
+            "mota": mota,
+            "motp": motp,
+            "idSwitchCount": self._tracking_id_switches
         }
 
     def get_objects_by_class(self):

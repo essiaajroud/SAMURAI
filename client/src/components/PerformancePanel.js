@@ -32,7 +32,7 @@ ChartJS.register(
 // Helper to format numbers
 const formatMetric = (value, decimals = 3) => {
   if (value === null || value === undefined || isNaN(value)) {
-    return '--';
+    return '0';
   }
   return value.toFixed(decimals);
 };
@@ -420,10 +420,10 @@ const PerformancePanel = ({
               <div className="metric-card">FPS<br /><span>{formatMetric(modelMetrics.fps, 1)}</span></div>
               <div className="metric-card">Inference Time<br /><span>{formatMetric(modelMetrics.inferenceTime)} ms</span></div>
               <div className="metric-card">Object Count<br /><span>{modelMetrics.objectCount ?? '--'}</span></div>
-              <div className="metric-card">Detection Rate<br /><span>{formatMetric(modelMetrics.detectionRate)}%</span></div>
-              <div className="metric-card">Precision<br /><span>{formatMetric(modelMetrics.precision)}%</span></div>
-              <div className="metric-card">Recall<br /><span>{formatMetric(modelMetrics.recall)}%</span></div>
-              <div className="metric-card">F1-Score<br /><span>{formatMetric(modelMetrics.f1Score)}</span></div>
+              <div className="metric-card">Detection Rate<br /><span>{formatMetric((modelMetrics.detectionRate ?? 0), 2)}%</span></div>
+              <div className="metric-card">Precision<br /><span>{formatMetric((modelMetrics.precision ?? 0), 2)}%</span></div>
+              <div className="metric-card">Recall<br /><span>{formatMetric((modelMetrics.recall ?? 0), 2)}%</span></div>
+              <div className="metric-card">F1-Score<br /><span>{formatMetric((modelMetrics.f1Score ?? 0), 2)}</span></div>
             </div>
             <div className="metrics-row">
               <div className="metric-card">ID Switch<br /><span>{modelMetrics.idSwitchCount ?? '--'}</span></div>
