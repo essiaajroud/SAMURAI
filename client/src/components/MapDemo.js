@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import TrackingMap from './TrackingMap';
 import { generateTestDetections, generateTestTrajectories } from '../utils/mapUtils';
+import axios from 'axios';
 import './MapDemo.css';
 
 const MapDemo = () => {
@@ -9,6 +10,17 @@ const MapDemo = () => {
   const [demoTrajectories, setDemoTrajectories] = useState({});
   const [isDemoRunning, setIsDemoRunning] = useState(false);
   const [demoInterval, setDemoInterval] = useState(null);
+  const [cameraLocation, setCameraLocation] = useState([48.8566, 2.3522]); // Default Paris
+  // Fetch camera GPS location from backend
+  useEffect(() => {
+    axios.get('/api/camera-location')
+      .then(res => {
+        if (res.data && res.data.latitude && res.data.longitude) {
+          setCameraLocation([res.data.latitude, res.data.longitude]);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Démarrer la démonstration
   const startDemo = () => {
@@ -80,7 +92,7 @@ const MapDemo = () => {
         detections={demoDetections}
         trajectoryHistory={demoTrajectories}
         isConnected={true}
-        mapCenter={[48.8566, 2.3522]}
+        mapCenter={cameraLocation}
         zoomLevel={13}
       />
     </div>

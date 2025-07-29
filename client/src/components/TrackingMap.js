@@ -16,6 +16,27 @@ const TrackingMap = ({
   const [trajectories, setTrajectories] = useState([]);
   const [showTrajectories, setShowTrajectories] = useState(true);
   const [showCurrentDetections, setShowCurrentDetections] = useState(true);
+  const [cameraMarker, setCameraMarker] = useState(null);
+  // Add camera marker at mapCenter
+  useEffect(() => {
+    if (!map || typeof window.L === 'undefined' || !mapCenter) return;
+    // Remove previous camera marker
+    if (cameraMarker && cameraMarker.remove) {
+      try { cameraMarker.remove(); } catch (e) { /* ignore */ }
+    }
+    // Add camera marker
+    const marker = window.L.marker(mapCenter, {
+      icon: window.L.divIcon({
+        className: 'camera-marker',
+        html: '<div style="background:#222;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border:2px solid #00eaff;font-size:16px;">📷</div>',
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
+      })
+    }).addTo(map);
+    marker.bindPopup('<b>Camera Location</b>');
+    setCameraMarker(marker);
+    return () => { if (marker && marker.remove) marker.remove(); };
+  }, [map, mapCenter]);
 
   // Initialiser la carte
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -333,6 +354,10 @@ const TrackingMap = ({
       <div className="map-legend">
         <h4>Légende</h4>
         <div className="legend-items">
+          <div className="legend-item">
+            <span className="legend-color" style={{ backgroundColor: '#00eaff', border: '2px solid #222', fontSize: '18px', display: 'inline-block', width: '22px', height: '22px', borderRadius: '50%', textAlign: 'center', lineHeight: '22px' }}>📷</span>
+            <span>Camera</span>
+          </div>
           <div className="legend-item">
             <span className="legend-color" style={{ backgroundColor: '#ff4444' }}></span>
             <span>Person</span>
