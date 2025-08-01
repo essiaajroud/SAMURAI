@@ -24,12 +24,64 @@ import random
 # Configuration pour les logs
 ENABLE_LOGS = True  # Active l'affichage des logs pour le diagnostic
 
+# --- GPU Configuration ---
+try:
+    from gpu_config import gpu_config
+    GPU_AVAILABLE = gpu_config.gpu_available
+    if GPU_AVAILABLE and ENABLE_LOGS:
+        print(f"🚀 GPU acceleration available: {gpu_config.gpu_name}")
+        print(f"   Memory: {gpu_config.gpu_memory:.1f} GB")
+    else:
+        if ENABLE_LOGS:
+            print("⚠️ GPU acceleration not available, using CPU")
+except ImportError as e:
+    if ENABLE_LOGS:
+        print(f"⚠️ GPU configuration not found: {e}")
+    GPU_AVAILABLE = False
+    gpu_config = None
+
+# --- Camera GPS and Stream Synchronization ---
+try:
+    from camera_gps import gps_manager, get_camera_location, set_camera_location, auto_detect_location
+    from stream_synchronizer import StreamSynchronizer, RealTimeStreamOptimizer
+    from metrics_calculator import metrics_calculator, get_performance_metrics, add_detection_result, add_performance_data
+    
+    # Initialize stream synchronizer
+    stream_sync = StreamSynchronizer(target_fps=30, buffer_size=5, max_latency_ms=100)
+    stream_optimizer = RealTimeStreamOptimizer(target_fps=30)
+    
+    # Auto-detect camera location
+    if ENABLE_LOGS:
+        print("📍 Auto-detecting camera location...")
+    auto_detect_location()
+    
+    if ENABLE_LOGS:
+        camera_loc = get_camera_location()
+        print(f"📍 Camera location: {camera_loc['latitude']:.6f}, {camera_loc['longitude']:.6f}")
+    
+    GPS_AVAILABLE = True
+    STREAM_SYNC_AVAILABLE = True
+    METRICS_AVAILABLE = True
+    
+except ImportError as e:
+    if ENABLE_LOGS:
+        print(f"⚠️ Camera GPS/Stream sync modules not found: {e}")
+    GPS_AVAILABLE = False
+    STREAM_SYNC_AVAILABLE = False
+    METRICS_AVAILABLE = False
+    gps_manager = None
+    stream_sync = None
+    stream_optimizer = None
+    metrics_calculator = None
+
 # --- YOLO Detector Initialization ---
 try:
     from yolo_detector import detector
     YOLO_AVAILABLE = detector.model is not None
     if YOLO_AVAILABLE and ENABLE_LOGS:
         print("✅ YOLO detector loaded successfully.")
+        if GPU_AVAILABLE:
+            print(f"   Running on: {gpu_config.get_device()}")
     else:
         if ENABLE_LOGS:
             print("⚠️ YOLO detector failed to load a model. YOLO features will be disabled.")
@@ -475,8 +527,243 @@ def health_check():
         'status': 'healthy',
         'timestamp': datetime.now(timezone.utc).isoformat(),
         'database': 'connected',
-        'yolo_available': YOLO_AVAILABLE
+        'yolo_available': YOLO_AVAILABLE,
+        'gpu_available': GPU_AVAILABLE,
+        'gpu_name': gpu_config.gpu_name if GPU_AVAILABLE and gpu_config else None,
+        'gps_available': GPS_AVAILABLE,
+        'stream_sync_available': STREAM_SYNC_AVAILABLE,
+        'metrics_available': METRICS_AVAILABLE
     })
+
+@app.route('/api/gpu/config', methods=['GET'])
+def get_gpu_config():
+    """Get current GPU configuration."""
+    if not GPU_AVAILABLE or not gpu_config:
+        return jsonify({
+            'gpu_available': False,
+            'message': 'GPU not available'
+        })
+    
+    return jsonify({
+        'gpu_available': True,
+        'gpu_name': gpu_config.gpu_name,
+        'gpu_memory_gb': round(gpu_config.gpu_memory, 2),
+        'device': str(gpu_config.get_device()),
+        'optimization_level': gpu_config.optimization_level,
+        'optimization_settings': gpu_config.get_optimization_settings(),
+        'memory_info': gpu_config.get_memory_info()
+    })
+
+@app.route('/api/gpu/config', methods=['POST'])
+def set_gpu_config():
+    """Set GPU optimization level."""
+    if not GPU_AVAILABLE or not gpu_config:
+        return jsonify({'error': 'GPU not available'}), 400
+    
+    try:
+        data = request.get_json()
+        optimization_level = data.get('optimization_level', 'balanced')
+        
+        if optimization_level not in ['balanced', 'performance', 'quality']:
+            return jsonify({'error': 'Invalid optimization level'}), 400
+        
+        gpu_config.set_optimization_level(optimization_level)
+        
+        return jsonify({
+            'message': f'GPU optimization level set to {optimization_level}',
+            'optimization_level': optimization_level,
+            'optimization_settings': gpu_config.get_optimization_settings()
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/gpu/clear-cache', methods=['POST'])
+def clear_gpu_cache():
+    """Clear GPU memory cache."""
+    if not GPU_AVAILABLE or not gpu_config:
+        return jsonify({'error': 'GPU not available'}), 400
+    
+    try:
+        gpu_config.clear_cache()
+        return jsonify({
+            'message': 'GPU cache cleared successfully',
+            'memory_info': gpu_config.get_memory_info()
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# --- Camera GPS Routes ---
+@app.route('/api/camera-location', methods=['GET'])
+def get_camera_location_api():
+    """Get current camera GPS location."""
+    try:
+        if GPS_AVAILABLE:
+            location = get_camera_location()
+            return jsonify(location)
+        else:
+            return jsonify({
+                'error': 'GPS module not available'
+            }), 400
+    except Exception as e:
+        return jsonify({
+            'error': str(e)
+        }), 500
+
+@app.route('/api/camera-location', methods=['POST'])
+def set_camera_location_api():
+    """Set camera GPS location."""
+    try:
+        if not GPS_AVAILABLE:
+            return jsonify({
+                'error': 'GPS module not available'
+            }), 400
+        
+        data = request.get_json()
+        latitude = float(data.get('latitude'))
+        longitude = float(data.get('longitude'))
+        altitude = data.get('altitude')
+        accuracy = data.get('accuracy')
+        
+        location = set_camera_location(latitude, longitude, altitude, accuracy)
+        return jsonify({
+            'success': True,
+            'location': location
+        })
+    except Exception as e:
+        return jsonify({
+            'error': str(e)
+        }), 500
+
+@app.route('/api/camera-location/auto-detect', methods=['POST'])
+def auto_detect_camera_location():
+    """Auto-detect camera location from IP."""
+    try:
+        if GPS_AVAILABLE:
+            result = auto_detect_location()
+            if 'error' in result:
+                return jsonify(result), 400
+            return jsonify({
+                'success': True,
+                'location': result
+            })
+        else:
+            return jsonify({
+                'error': 'GPS module not available'
+            }), 400
+    except Exception as e:
+        return jsonify({
+            'error': str(e)
+        }), 500
+
+# --- Performance Metrics Routes ---
+@app.route('/api/metrics/performance', methods=['GET'])
+def get_performance_metrics_api():
+    """Get comprehensive performance metrics including Precision-Recall-F1 curves."""
+    try:
+        if METRICS_AVAILABLE:
+            metrics = get_performance_metrics()
+            return jsonify(metrics)
+        else:
+            return jsonify({
+                'error': 'Metrics module not available'
+            }), 400
+    except Exception as e:
+        return jsonify({
+            'error': str(e)
+        }), 500
+
+@app.route('/api/metrics/curves', methods=['GET'])
+def get_performance_curves():
+    """Get performance curves data for plotting."""
+    try:
+        if METRICS_AVAILABLE and metrics_calculator:
+            curves = metrics_calculator.get_performance_curves()
+            return jsonify(curves)
+        else:
+            return jsonify({
+                'error': 'Metrics module not available'
+            }), 400
+    except Exception as e:
+        return jsonify({
+            'error': str(e)
+        }), 500
+
+@app.route('/api/metrics/reset', methods=['POST'])
+def reset_metrics():
+    """Reset all performance metrics."""
+    try:
+        if METRICS_AVAILABLE and metrics_calculator:
+            metrics_calculator.reset()
+            return jsonify({
+                'success': True,
+                'message': 'Metrics reset successfully'
+            })
+        else:
+            return jsonify({
+                'error': 'Metrics module not available'
+            }), 400
+    except Exception as e:
+        return jsonify({
+            'error': str(e)
+        }), 500
+
+# --- Stream Synchronization Routes ---
+@app.route('/api/stream/sync-status', methods=['GET'])
+def get_stream_sync_status():
+    """Get stream synchronization status and metrics."""
+    try:
+        if STREAM_SYNC_AVAILABLE and stream_sync:
+            metrics = stream_sync.get_metrics()
+            return jsonify({
+                'status': 'running' if stream_sync.is_running else 'stopped',
+                'metrics': metrics
+            })
+        else:
+            return jsonify({
+                'error': 'Stream sync module not available'
+            }), 400
+    except Exception as e:
+        return jsonify({
+            'error': str(e)
+        }), 500
+
+@app.route('/api/stream/sync-start', methods=['POST'])
+def start_stream_sync():
+    """Start stream synchronization."""
+    try:
+        if STREAM_SYNC_AVAILABLE and stream_sync:
+            stream_sync.start()
+            return jsonify({
+                'success': True,
+                'message': 'Stream synchronization started'
+            })
+        else:
+            return jsonify({
+                'error': 'Stream sync module not available'
+            }), 400
+    except Exception as e:
+        return jsonify({
+            'error': str(e)
+        }), 500
+
+@app.route('/api/stream/sync-stop', methods=['POST'])
+def stop_stream_sync():
+    """Stop stream synchronization."""
+    try:
+        if STREAM_SYNC_AVAILABLE and stream_sync:
+            stream_sync.stop()
+            return jsonify({
+                'success': True,
+                'message': 'Stream synchronization stopped'
+            })
+        else:
+            return jsonify({
+                'error': 'Stream sync module not available'
+            }), 400
+    except Exception as e:
+        return jsonify({
+            'error': str(e)
+        }), 500
 
 # YOLO and Video Routes
 @app.route('/api/yolo/model', methods=['GET'])
@@ -831,12 +1118,36 @@ def get_performance():
 
 @app.route('/api/system-metrics', methods=['GET'])
 def get_system_metrics():
-    """Returns detailed, cross-platform system metrics using psutil."""
+    """Returns detailed, cross-platform system metrics using psutil including GPU."""
     try:
         cpu = psutil.cpu_percent(interval=0.1)
         ram = psutil.virtual_memory()
         disk = psutil.disk_usage('/')
         net = psutil.net_io_counters()
+        
+        # GPU metrics
+        gpu_metrics = {}
+        if GPU_AVAILABLE and gpu_config:
+            gpu_memory_info = gpu_config.get_memory_info()
+            gpu_metrics = {
+                'name': gpu_config.gpu_name,
+                'memory_total_gb': round(gpu_config.gpu_memory, 2),
+                'memory_used_gb': round(gpu_memory_info['gpu_memory_used'], 2),
+                'memory_free_gb': round(gpu_memory_info['gpu_memory_free'], 2),
+                'memory_percent': round((gpu_memory_info['gpu_memory_used'] / gpu_config.gpu_memory) * 100, 2),
+                'device': str(gpu_config.get_device()),
+                'optimization_level': gpu_config.optimization_level
+            }
+        else:
+            gpu_metrics = {
+                'name': 'CPU Only',
+                'memory_total_gb': 0,
+                'memory_used_gb': 0,
+                'memory_free_gb': 0,
+                'memory_percent': 0,
+                'device': 'cpu',
+                'optimization_level': 'none'
+            }
         
         data = {
             'cpu_percent': cpu,
@@ -848,7 +1159,8 @@ def get_system_metrics():
             'disk_total_GB': round(disk.total / 1024**3, 2),
             'net_sent_MB': round(net.bytes_sent / 1024**2, 2),
             'net_recv_MB': round(net.bytes_recv / 1024**2, 2),
-            'running_processes': len(psutil.pids())
+            'running_processes': len(psutil.pids()),
+            'gpu': gpu_metrics
         }
         return jsonify(data)
     except Exception as e:

@@ -10,6 +10,31 @@ const TrackingMap = ({
   mapCenter = [34.0, 9.0], // Tunisie par défaut
   zoomLevel = 13 
 }) => {
+  const [cameraLocation, setCameraLocation] = useState(mapCenter);
+  const [locationAccuracy, setLocationAccuracy] = useState(null);
+  
+  // Fetch real camera location
+  useEffect(() => {
+    const fetchCameraLocation = async () => {
+      try {
+        const response = await fetch('/api/camera-location');
+        if (response.ok) {
+          const locationData = await response.json();
+          if (locationData.latitude && locationData.longitude) {
+            setCameraLocation([locationData.latitude, locationData.longitude]);
+            setLocationAccuracy(locationData.accuracy);
+            console.log(`📍 Camera location updated: ${locationData.latitude}, ${locationData.longitude} (accuracy: ${locationData.accuracy}m)`);
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to fetch camera location:', error);
+      }
+    };
+    
+    fetchCameraLocation();
+    const interval = setInterval(fetchCameraLocation, 30000); // Update every 30 seconds
+    return () => clearInterval(interval);
+  }, []);
   const mapRef = useRef(null);
   const [map, setMap] = useState(null);
   const [markers, setMarkers] = useState([]);
@@ -17,29 +42,58 @@ const TrackingMap = ({
   const [showTrajectories, setShowTrajectories] = useState(true);
   const [showCurrentDetections, setShowCurrentDetections] = useState(true);
   const [cameraMarker, setCameraMarker] = useState(null);
-  // Add camera marker at mapCenter
+  // Add camera marker at real camera location
   useEffect(() => {
-    if (!map || typeof window.L === 'undefined' || !mapCenter) return;
-    // Remove previous camera marker
-    if (cameraMarker && cameraMarker.remove) {
+    // Ensure map is fully initialized and mapRef.current is available
+    if (!map || typeof window.L === 'undefined' || !cameraLocation || !map._container) return;
+
+    // Remove previous camera marker if it exists and is on the current map
+    if (cameraMarker && cameraMarker.remove && cameraMarker._map === map) {
       try { cameraMarker.remove(); } catch (e) { /* ignore */ }
     }
+
+    // Create accuracy circle if available
+    let accuracyCircle = null;
+    if (locationAccuracy && locationAccuracy > 0) {
+      accuracyCircle = window.L.circle(cameraLocation, {
+        radius: locationAccuracy,
+        color: '#00eaff',
+        fillColor: '#00eaff',
+        fillOpacity: 0.1,
+        weight: 2
+      }).addTo(map);
+    }
+
     // Add camera marker
-    const marker = window.L.marker(mapCenter, {
+    const marker = window.L.marker(cameraLocation, {
       icon: window.L.divIcon({
         className: 'camera-marker',
-        html: '<div style="background:#222;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border:2px solid #00eaff;font-size:16px;">📷</div>',
+        html: `<div style="background:#222;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border:2px solid #00eaff;font-size:16px;">📷</div>`,
         iconSize: [24, 24],
         iconAnchor: [12, 12]
       })
     }).addTo(map);
-    marker.bindPopup('<b>Camera Location</b>');
+
+    const popupContent = `
+      <b>Camera Location</b><br>
+      Lat: ${cameraLocation[0].toFixed(6)}<br>
+      Lng: ${cameraLocation[1].toFixed(6)}<br>
+      ${locationAccuracy ? `Accuracy: ±${locationAccuracy}m` : ''}
+    `;
+    marker.bindPopup(popupContent);
     setCameraMarker(marker);
-    return () => { if (marker && marker.remove) marker.remove(); };
-  }, [map, mapCenter]);
+
+    // Center map on camera location
+    map.setView(cameraLocation, map.getZoom());
+
+    return () => {
+      // Only remove if still attached to this map
+      if (marker && marker.remove && marker._map === map) marker.remove();
+      if (accuracyCircle && accuracyCircle.remove && accuracyCircle._map === map) accuracyCircle.remove();
+    };
+  }, [map, cameraLocation, locationAccuracy]);
 
   // Initialiser la carte
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!mapRef.current) return;
 
@@ -99,7 +153,7 @@ const TrackingMap = ({
         }
       }
     };
-  }, []);
+  }, [map, mapCenter, zoomLevel]);
 
   // Mettre à jour les marqueurs des détections courantes
   useEffect(() => {
@@ -157,7 +211,7 @@ const TrackingMap = ({
     } catch (error) {
       console.error('Error updating markers:', error);
     }
-  }, [map, detections, showCurrentDetections, markers]);
+  }, [map, detections, showCurrentDetections, markers, cameraMarker]);
 
   // Mettre à jour les trajectoires
   useEffect(() => {

@@ -300,26 +300,83 @@ const PerformancePanel = ({
     }
   };
 
+  // Enhanced PR-F1 chart with real data
   const prf1ChartData = {
-    labels: ['Metrics'],
+    labels: ['Precision', 'Recall', 'F1-Score'],
     datasets: [
       {
-        label: 'Precision (%)',
-        data: [modelMetrics.precision],
-        backgroundColor: 'rgba(255, 99, 132, 0.5)',
+        label: 'Current Values (%)',
+        data: [
+          modelMetrics.precision || 0,
+          modelMetrics.recall || 0,
+          (modelMetrics.f1Score || 0) * 100
+        ],
+        backgroundColor: [
+          'rgba(255, 99, 132, 0.8)',
+          'rgba(54, 162, 235, 0.8)',
+          'rgba(75, 192, 192, 0.8)'
+        ],
+        borderColor: [
+          'rgba(255, 99, 132, 1)',
+          'rgba(54, 162, 235, 1)',
+          'rgba(75, 192, 192, 1)'
+        ],
+        borderWidth: 2
+      }
+    ],
+  };
+
+  // Performance curves data
+  const [performanceCurves, setPerformanceCurves] = useState(null);
+  
+  useEffect(() => {
+    const fetchPerformanceCurves = async () => {
+      try {
+        const response = await fetch('/api/metrics/curves');
+        if (response.ok) {
+          const curvesData = await response.json();
+          setPerformanceCurves(curvesData);
+        }
+      } catch (error) {
+        console.warn('Failed to fetch performance curves:', error);
+      }
+    };
+    
+    fetchPerformanceCurves();
+    const interval = setInterval(fetchPerformanceCurves, 10000); // Update every 10 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  // PR Curve data
+  const prCurveData = performanceCurves ? {
+    labels: performanceCurves.thresholds?.map(t => `T=${t}`) || [],
+    datasets: [
+      {
+        label: 'Precision',
+        data: performanceCurves.precision || [],
+        borderColor: 'rgba(255, 99, 132, 1)',
+        backgroundColor: 'rgba(255, 99, 132, 0.1)',
+        fill: false,
+        tension: 0.4
       },
       {
-        label: 'Recall (%)',
-        data: [modelMetrics.recall],
-        backgroundColor: 'rgba(54, 162, 235, 0.5)',
+        label: 'Recall',
+        data: performanceCurves.recall || [],
+        borderColor: 'rgba(54, 162, 235, 1)',
+        backgroundColor: 'rgba(54, 162, 235, 0.1)',
+        fill: false,
+        tension: 0.4
       },
       {
         label: 'F1-Score',
-        data: [modelMetrics.f1Score ? modelMetrics.f1Score * 100 : 0], // Scale F1 to %
-        backgroundColor: 'rgba(75, 192, 192, 0.5)',
-      },
-    ],
-  };
+        data: performanceCurves.f1_score || [],
+        borderColor: 'rgba(75, 192, 192, 1)',
+        backgroundColor: 'rgba(75, 192, 192, 0.1)',
+        fill: false,
+        tension: 0.4
+      }
+    ]
+  } : null;
 
   const detectionRateChartData = {
     labels: ['Detection Rate', ''],
@@ -442,15 +499,73 @@ const PerformancePanel = ({
             </div>
             <div className="metrics-row" style={{ height: '180px' }}>
               <div className="chart-container">
-                <Bar data={prf1ChartData} options={{ maintainAspectRatio: false, indexAxis: 'y', plugins: { title: { display: true, text: 'Precision / Recall / F1', color: '#fff' }, legend: { labels: { color: '#ccc' } } }, scales: { x: { min: 80, max: 100, ticks: { color: '#ccc' } }, y: { ticks: { color: '#ccc' } } } }} />
+                <Bar data={prf1ChartData} options={{ 
+                  maintainAspectRatio: false, 
+                  indexAxis: 'y', 
+                  plugins: { 
+                    title: { display: true, text: 'Precision / Recall / F1', color: '#fff' }, 
+                    legend: { labels: { color: '#ccc' } } 
+                  }, 
+                  scales: { 
+                    x: { min: 0, max: 100, ticks: { color: '#ccc' } }, 
+                    y: { ticks: { color: '#ccc' } } 
+                  } 
+                }} />
               </div>
               <div className="chart-container">
-                <Doughnut data={detectionRateChartData} options={{ maintainAspectRatio: false, plugins: { title: { display: true, text: 'Detection Rate', color: '#fff' }, legend: { display: false } } }} />
+                <Doughnut data={detectionRateChartData} options={{ 
+                  maintainAspectRatio: false, 
+                  plugins: { 
+                    title: { display: true, text: 'Detection Rate', color: '#fff' }, 
+                    legend: { display: false } 
+                  } 
+                }} />
               </div>
               <div className="chart-container">
-                <Line data={idSwitchChartData} options={{ maintainAspectRatio: false, plugins: { title: { display: true, text: 'ID Switches', color: '#fff' }, legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { color: '#ccc' } }, x: { ticks: { color: '#ccc' } } } }} />
+                <Line data={idSwitchChartData} options={{ 
+                  maintainAspectRatio: false, 
+                  plugins: { 
+                    title: { display: true, text: 'ID Switches', color: '#fff' }, 
+                    legend: { display: false } 
+                  }, 
+                  scales: { 
+                    y: { beginAtZero: true, ticks: { color: '#ccc' } }, 
+                    x: { ticks: { color: '#ccc' } } 
+                  } 
+                }} />
               </div>
             </div>
+            
+            {/* Performance Curves Section */}
+            {prCurveData && (
+              <div className="metrics-row" style={{ height: '250px', marginTop: '20px' }}>
+                <div className="chart-container" style={{ width: '100%' }}>
+                  <Line data={prCurveData} options={{ 
+                    maintainAspectRatio: false, 
+                    plugins: { 
+                      title: { display: true, text: 'Performance Curves (Precision-Recall-F1 vs Threshold)', color: '#fff' }, 
+                      legend: { labels: { color: '#ccc' } } 
+                    }, 
+                    scales: { 
+                      y: { 
+                        beginAtZero: true, 
+                        max: 1.0,
+                        ticks: { color: '#ccc' },
+                        grid: { color: '#444' }
+                      }, 
+                      x: { 
+                        ticks: { color: '#ccc' },
+                        grid: { color: '#444' }
+                      } 
+                    },
+                    interaction: {
+                      intersect: false,
+                      mode: 'index'
+                    }
+                  }} />
+                </div>
+              </div>
+            )}
               </div>
             )}
         {selectedTab === 'system' && (

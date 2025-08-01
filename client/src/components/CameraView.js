@@ -186,12 +186,18 @@ const CameraView = ({
           <img
             ref={videoRef} // Also use ref here to get dimensions for canvas
             className="video-feed"
-            src={`http://localhost:5000/video_feed?t=${Date.now()}`} // Added timestamp to avoid caching
+            src={`http://localhost:5000/video_feed?t=${Date.now()}&sync=true`} // Added sync parameter
             alt="Video stream"
             style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }}
             onError={(e) => {
               console.warn('Failed to load video feed');
               e.target.style.display = 'none'; // Cacher l'image en cas d'erreur
+            }}
+            onLoad={(e) => {
+              // Log successful frame loading for debugging
+              if (process.env.NODE_ENV === 'development') {
+                console.log('Frame loaded successfully');
+              }
             }}
           />
         )}

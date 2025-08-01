@@ -3,12 +3,24 @@ import torch
 from ultralytics import YOLO
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 import threading
 import queue
 import numpy as np
 import sys
 import importlib.util
+
+# GPU Configuration
+try:
+    from gpu_config import gpu_config
+    GPU_AVAILABLE = gpu_config.gpu_available
+    if GPU_AVAILABLE:
+        print(f"🚀 GPU acceleration enabled: {gpu_config.gpu_name}")
+    else:
+        print("⚠️ GPU acceleration not available, using CPU")
+except ImportError:
+    print("⚠️ GPU configuration not found, using CPU")
+    GPU_AVAILABLE = False
 
 # Importer la configuration des logs depuis app.py
 try:
@@ -62,16 +74,34 @@ class YOLODetector:
         self.load_model()
 
     def load_model(self):
-        """Load the YOLO model (ONNX or PyTorch)."""
+        """Load the YOLO model (ONNX or PyTorch) with GPU optimization."""
         if not os.path.exists(self.model_path):
             if ENABLE_LOGS:
                 print(f"❌ Model not found: {self.model_path}")
             self.model = None
             return
         try:
-            self.model = YOLO(self.model_path, task="detect")
-            if ENABLE_LOGS:
-                print(f"✅ Model loaded: {self.model_path}")
+            # Load model with GPU optimization
+            if GPU_AVAILABLE:
+                # Use GPU device for YOLO
+                self.model = YOLO(self.model_path, task="detect")
+                
+                # Apply GPU optimizations
+                if hasattr(self.model, 'model'):
+                    self.model.model = gpu_config.optimize_model(self.model.model)
+                
+                # Set device for inference
+                self.model.to(gpu_config.get_device())
+                
+                if ENABLE_LOGS:
+                    print(f"✅ Model loaded with GPU acceleration: {self.model_path}")
+                    print(f"   Device: {gpu_config.get_device()}")
+                    print(f"   GPU Memory: {gpu_config.get_memory_info()['gpu_memory_used']:.2f} GB used")
+            else:
+                self.model = YOLO(self.model_path, task="detect")
+                if ENABLE_LOGS:
+                    print(f"✅ Model loaded (CPU): {self.model_path}")
+                    
         except Exception as e:
             if ENABLE_LOGS:
                 print(f"❌ Error loading model: {e}")
@@ -84,10 +114,20 @@ class YOLODetector:
     def _execute_detection(self, frame):
         """
         Executes YOLO detection on a single frame and returns drawn frame and detections.
-        Ajoute le calcul de la distance réelle caméra-objet.
+        Optimized for GPU acceleration with RTX 3060.
         """
         if self.model is None:
             return frame, []
+
+        # GPU optimization for inference
+        if GPU_AVAILABLE:
+            # Convert frame to GPU tensor if needed
+            if isinstance(frame, np.ndarray):
+                frame_tensor = torch.from_numpy(frame).to(gpu_config.get_device())
+                if gpu_config.get_optimization_settings()["precision"] == "fp16":
+                    frame_tensor = frame_tensor.half()
+            else:
+                frame_tensor = frame
 
         # Paramètres caméra (à ajuster selon ton setup)
         FOCAL_LENGTH_PX = 800  # focale en pixels (exemple)
@@ -183,11 +223,24 @@ class YOLODetector:
         is_file = os.path.exists(stream_source)
         
         try:
+            if ENABLE_LOGS:
+                print(f"🔍 Opening video capture for: {stream_source}")
             cap = cv2.VideoCapture(stream_source)
             if not cap.isOpened():
                 if ENABLE_LOGS:
                     print(f"❌ Unable to open stream source: {stream_source}")
                 started_event.set()  # Signal completion to unblock the caller
+                return
+
+            # Test reading first frame to ensure stream is working
+            if ENABLE_LOGS:
+                print(f"🔍 Testing first frame read...")
+            ret, test_frame = cap.read()
+            if not ret:
+                if ENABLE_LOGS:
+                    print(f"❌ Unable to read first frame from: {stream_source}")
+                cap.release()
+                started_event.set()
                 return
 
             self.is_running = True
@@ -196,32 +249,114 @@ class YOLODetector:
             if ENABLE_LOGS:
                 print(f"🎬 Streaming started for: {stream_source}")
 
+            # Initialize stream synchronizer if available
+            stream_sync_available = False
+            try:
+                from stream_synchronizer import StreamSynchronizer, RealTimeStreamOptimizer
+                stream_sync = StreamSynchronizer(target_fps=30, buffer_size=5, max_latency_ms=100)
+                stream_optimizer = RealTimeStreamOptimizer(target_fps=30)
+                stream_sync_available = True
+                stream_sync.start()
+                if ENABLE_LOGS:
+                    print("🔄 Stream synchronization enabled")
+            except ImportError:
+                if ENABLE_LOGS:
+                    print("⚠️ Stream synchronization not available")
+
+            frame_count = 0
+            last_fps_update = time.time()
+            
             while self.is_running:
+                # Check if we should process this frame (for synchronization)
+                if stream_sync_available and not stream_optimizer.should_process_frame():
+                    time.sleep(0.001)  # Small delay to prevent busy waiting
+                    continue
+                
+                # Add a small delay to prevent excessive CPU usage
+                time.sleep(0.001)
+                
+                # Debug: vérifier si le stream est toujours actif
+                if ENABLE_LOGS and frame_count % 50 == 0:
+                    print(f"🔄 Stream check: is_running={self.is_running}, frame_count={frame_count}")
+                
                 ret, frame = cap.read()
                 if not ret:
                     if is_file: # If it's a file, loop it
                         if ENABLE_LOGS:
-                            print("Looping video file...")
+                            print("🔄 End of video file, looping...")
                         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                        frame_count = 0  # Reset frame counter
                         continue
                     else: # If it's a network stream and it ends, stop.
                         if ENABLE_LOGS:
                             print("Network stream ended.")
                         break
                 
-                # Execute detection
-                drawn_frame, detections = self._execute_detection(frame)
+                # Optimize frame size for better performance
+                if stream_sync_available:
+                    frame = stream_optimizer.optimize_frame_size(frame, target_width=640)
                 
-                # Debug log pour les détections
-                if ENABLE_LOGS:
+                # Execute detection with timing
+                start_time = time.time()
+                try:
+                    drawn_frame, detections = self._execute_detection(frame)
+                    inference_time = (time.time() - start_time) * 1000  # Convert to ms
+                except Exception as e:
+                    if ENABLE_LOGS:
+                        print(f"❌ Error during detection: {e}")
+                    inference_time = 0
+                    drawn_frame = frame
+                    detections = []
+                
+                # Update performance metrics
+                self.inference_time_ms = inference_time
+                
+                # Add detection to metrics calculator if available
+                try:
+                    from metrics_calculator import add_detection_result, add_performance_data
+                    for detection in detections:
+                        add_detection_result({
+                            'label': detection.get('label', 'unknown'),
+                            'confidence': detection.get('confidence', 0.0),
+                            'bbox': [detection.get('x', 0), detection.get('y', 0), 
+                                   detection.get('width', 0), detection.get('height', 0)],
+                            'timestamp': datetime.now(timezone.utc)
+                        })
+                    
+                    # Add performance data
+                    current_fps = stream_optimizer.get_actual_fps() if stream_sync_available else 0
+                    add_performance_data(current_fps, inference_time)
+                except ImportError:
+                    pass  # Metrics calculator not available
+                
+                # Debug log pour les détections (reduced frequency)
+                if ENABLE_LOGS and frame_count % 30 == 0:  # Log every 30 frames
                     if detections:
-                        print(f"✅ Détections trouvées: {len(detections)} objets")
+                        print(f"✅ Frame {frame_count}: {len(detections)} détections, {inference_time:.1f}ms")
                     else:
-                        print("⚠️ Aucune détection trouvée dans cette frame")
+                        print(f"⚠️ Frame {frame_count}: Aucune détection, {inference_time:.1f}ms")
+                
+                # Log de debug pour identifier pourquoi le stream s'arrête
+                if ENABLE_LOGS and frame_count % 10 == 0:  # Log every 10 frames
+                    print(f"🔍 Frame {frame_count}: is_running={self.is_running}, queue_size={self.frame_queue.qsize()}")
 
                 # Put the processed frame into the queue for the web feed
                 if not self.frame_queue.full():
+                    # Optimize encoding if stream sync is available
+                    if stream_sync_available:
+                        encode_params = stream_optimizer.optimize_encoding_params(quality=80)
+                        _, encoded_frame = cv2.imencode('.jpg', drawn_frame, encode_params)
+                        # Convert back to frame for queue
+                        drawn_frame = cv2.imdecode(encoded_frame, cv2.IMREAD_COLOR)
+                    
                     self.frame_queue.put(drawn_frame)
+                else:
+                    # If queue is full, remove oldest frame to make room
+                    try:
+                        self.frame_queue.get_nowait()
+                        self.frame_queue.put(drawn_frame)
+                    except queue.Empty:
+                        pass
                 
                 # Update FPS calculation
                 now = time.time()
@@ -231,10 +366,37 @@ class YOLODetector:
                 if len(self._frame_times) > 1:
                     time_diff = self._frame_times[-1] - self._frame_times[0]
                     self.fps = (len(self._frame_times) - 1) / time_diff if time_diff > 0 else 0
+                
+                # Add detections to database using callback
+                for detection in detections:
+                    if self.detection_callback:
+                        self.detection_callback(detection)
+                
+                # Update current detections for real-time display
+                self.current_detections = detections
+                
+                frame_count += 1
+                
+                # Add a small delay to control frame rate for video files
+                if is_file:
+                    # Calculate target frame time (30 FPS = ~33ms per frame)
+                    target_frame_time = 1.0 / 30.0
+                    elapsed = time.time() - now
+                    if elapsed < target_frame_time:
+                        time.sleep(target_frame_time - elapsed)
+                
+                # Periodic performance logging
+                if now - last_fps_update > 5.0:  # Every 5 seconds
+                    if ENABLE_LOGS:
+                        print(f"📊 Performance: FPS={self.fps:.1f}, Inference={inference_time:.1f}ms, Frame={frame_count}")
+                    last_fps_update = now
             
         except Exception as e:
             error_message = str(e)
             if ENABLE_LOGS:
+                print(f"❌ Exception in _process_stream: {e}")
+                print(f"   Error type: {type(e).__name__}")
+                print(f"   Frame count: {frame_count if 'frame_count' in locals() else 'N/A'}")
                 if "Connection" in error_message and "timed out" in error_message:
                     print(f"❌ Erreur de connexion au flux: Timeout. Vérifiez que l'appareil est accessible et que l'URL est correcte.")
                     print(f"   URL tentée: {stream_source}")
@@ -247,6 +409,14 @@ class YOLODetector:
         finally:
             if 'cap' in locals() and cap.isOpened():
                 cap.release()
+            
+            # Stop stream synchronizer
+            if 'stream_sync_available' in locals() and stream_sync_available:
+                try:
+                    stream_sync.stop()
+                except:
+                    pass
+            
             self.is_running = False
             self.current_video = None
             # Clear the queue
@@ -257,6 +427,16 @@ class YOLODetector:
     
     def start_streaming(self, stream_source):
         """Starts streaming in a separate thread and waits for initialization."""
+        # Check if model is loaded
+        if self.model is None:
+            if ENABLE_LOGS:
+                print("❌ Model not loaded, attempting to load...")
+            self.load_model()
+            if self.model is None:
+                if ENABLE_LOGS:
+                    print("❌ Failed to load model, cannot start streaming")
+                return None
+        
         if self.is_running:
             if ENABLE_LOGS:
                 print("🔄 Stopping previous stream...")
@@ -302,13 +482,15 @@ class YOLODetector:
     
     def stop_streaming(self):
         """Stops the stream."""
+        if ENABLE_LOGS:
+            print(f"🛑 stop_streaming() called - is_running was: {self.is_running}")
         self.is_running = False
         
     def generate_stream_frames(self):
         """Yields frames from the queue for the web feed."""
         while self.is_running:
             try:
-                frame = self.frame_queue.get(timeout=1)
+                frame = self.frame_queue.get(timeout=0.5)  # Reduced timeout for more responsive streaming
                 
                 # Réduire la taille de l'image pour améliorer les performances
                 scale_percent = 70  # pourcentage de la taille originale
@@ -328,12 +510,13 @@ class YOLODetector:
                        b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
 
             except queue.Empty:
-                # If the queue is empty, it might mean processing has stopped
-                # or is just slow. We check `is_running` to decide whether to continue.
+                # If the queue is empty, yield a placeholder frame or continue
                 if not self.is_running:
                     if ENABLE_LOGS:
                         print("Stream generation stopped as processing is no longer running.")
                     break
+                # Continue waiting for frames instead of breaking
+                continue
     
     def get_available_videos(self):
         """Returns the list of available videos."""

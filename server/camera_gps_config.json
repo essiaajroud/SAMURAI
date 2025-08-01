@@ -1,0 +1,11 @@
+{
+  "current_location": {
+    "latitude": 35.701,
+    "longitude": 10.801,
+    "altitude": null,
+    "accuracy": 5000.0,
+    "timestamp": "2025-08-01T13:52:15.334486+00:00",
+    "source": "ip_geolocation"
+  },
+  "last_updated": "2025-08-01T13:52:15.334501+00:00"
+}
