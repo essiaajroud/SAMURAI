@@ -2,7 +2,7 @@
 // Provides graphs, historical stats, and system log display
 import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { Line, Bar, Doughnut } from 'react-chartjs-2';
+import { Line, Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -300,46 +300,9 @@ const PerformancePanel = ({
     }
   };
 
-  const prf1ChartData = {
-    labels: ['Metrics'],
-    datasets: [
-      {
-        label: 'Precision (%)',
-        data: [modelMetrics.precision],
-        backgroundColor: 'rgba(255, 99, 132, 0.5)',
-      },
-      {
-        label: 'Recall (%)',
-        data: [modelMetrics.recall],
-        backgroundColor: 'rgba(54, 162, 235, 0.5)',
-      },
-      {
-        label: 'F1-Score',
-        data: [modelMetrics.f1Score ? modelMetrics.f1Score * 100 : 0], // Scale F1 to %
-        backgroundColor: 'rgba(75, 192, 192, 0.5)',
-      },
-    ],
-  };
 
-  const detectionRateChartData = {
-    labels: ['Detection Rate', ''],
-    datasets: [{
-      data: [modelMetrics.detectionRate, 100 - modelMetrics.detectionRate],
-      backgroundColor: ['rgba(75, 192, 192, 0.8)', 'rgba(200, 200, 200, 0.2)'],
-      circumference: 180,
-      rotation: 270,
-    }],
-  };
 
-  const idSwitchChartData = {
-    labels: modelMetricsHistory.map(m => m.timestamp),
-    datasets: [{
-      label: 'ID Switches',
-      data: modelMetricsHistory.map(m => m.idSwitchCount),
-      borderColor: 'rgb(255, 159, 64)',
-      backgroundColor: 'rgba(255, 159, 64, 0.5)',
-    }],
-  };
+
 
   const systemChartData = {
     labels: systemMetricsHistory.map(m => m.timestamp),
@@ -404,32 +367,25 @@ const PerformancePanel = ({
   return (
     <div className="performance-panel" style={{ height: '520px', overflow: 'auto', boxSizing: 'border-box' }}>
       <div className="panel-header">
-          <h2>Performance & Analytics</h2>
+        <h2>Performance & Analytics</h2>
         <div className="panel-tabs">
           <button className={selectedTab === 'model' ? 'active tab-button' : 'tab-button'} onClick={() => setSelectedTab('model')}>Model Performance</button>
           <button className={selectedTab === 'system' ? 'active tab-button' : 'tab-button'} onClick={() => setSelectedTab('system')}>System Performance</button>
-          <button className={selectedTab === 'history' ? 'active tab-button' : 'tab-button'} onClick={() => setSelectedTab('history')}>History</button>
           <button className={selectedTab === 'logs' ? 'active tab-button' : 'tab-button'} onClick={() => setSelectedTab('logs')}>Logs</button>
         </div>
       </div>
       <div className="panel-content">
         {selectedTab === 'model' && (
           <div className="model-metrics-section">
-            {/* FPS, Inference Time, Detection Rate, Precision, Recall, F1, ID Switch, MOTA, MOTP, Objects by class */}
+            {/* FPS, Inference Time, Object Count, Total Tracks, Active Trajectories, ID Switch, MOTA, MOTP, Objects by class */}
             <div className="metrics-row">
               <div className="metric-card">FPS<br /><span>{formatMetric(modelMetrics.fps, 1)}</span></div>
               <div className="metric-card">Inference Time<br /><span>{formatMetric(modelMetrics.inferenceTime)} ms</span></div>
               <div className="metric-card">Object Count<br /><span>{modelMetrics.objectCount ?? '--'}</span></div>
-              <div className="metric-card">Detection Rate<br /><span>{formatMetric((modelMetrics.detectionRate ?? 0), 2)}%</span></div>
-              <div className="metric-card">Precision<br /><span>{formatMetric((modelMetrics.precision ?? 0), 2)}%</span></div>
-              <div className="metric-card">Recall<br /><span>{formatMetric((modelMetrics.recall ?? 0), 2)}%</span></div>
-              <div className="metric-card">F1-Score<br /><span>{formatMetric((modelMetrics.f1Score ?? 0), 2)}</span></div>
+              <div className="metric-card">Total Tracks<br /><span>{modelMetrics.totalTracks ?? '--'}</span></div>
+              <div className="metric-card">Active Trajectories<br /><span>{modelMetrics.active_trajectories ?? '--'}</span></div>
             </div>
-            <div className="metrics-row">
-              <div className="metric-card">ID Switch<br /><span>{modelMetrics.idSwitchCount ?? '--'}</span></div>
-              <div className="metric-card">MOTA<br /><span>{formatMetric(modelMetrics.mota)}</span></div>
-              <div className="metric-card">MOTP<br /><span>{formatMetric(modelMetrics.motp)}</span></div>
-            </div>
+
             <div className="metrics-row">
               <div className="metric-card metric-card-wide">
                 <strong>Objets détectés par classe</strong>
@@ -440,45 +396,14 @@ const PerformancePanel = ({
                 </ul>
               </div>
             </div>
-            <div className="metrics-row" style={{ height: '180px' }}>
-              <div className="chart-container">
-                <Bar data={prf1ChartData} options={{ maintainAspectRatio: false, indexAxis: 'y', plugins: { title: { display: true, text: 'Precision / Recall / F1', color: '#fff' }, legend: { labels: { color: '#ccc' } } }, scales: { x: { min: 80, max: 100, ticks: { color: '#ccc' } }, y: { ticks: { color: '#ccc' } } } }} />
-              </div>
-              <div className="chart-container">
-                <Doughnut data={detectionRateChartData} options={{ maintainAspectRatio: false, plugins: { title: { display: true, text: 'Detection Rate', color: '#fff' }, legend: { display: false } } }} />
-              </div>
-              <div className="chart-container">
-                <Line data={idSwitchChartData} options={{ maintainAspectRatio: false, plugins: { title: { display: true, text: 'ID Switches', color: '#fff' }, legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { color: '#ccc' } }, x: { ticks: { color: '#ccc' } } } }} />
-              </div>
-            </div>
-              </div>
-            )}
-        {selectedTab === 'system' && (
-          <div className="system-metrics-section">
-            {/* CPU, GPU, RAM, Températures, Réseau */}
-            <div className="metrics-row">
-              <div className="metric-card">CPU Usage<br /><span>{formatMetric(systemMetrics.cpu_percent, 1)}%</span></div>
-              <div className="metric-card">RAM Usage<br /><span>{formatMetric(systemMetrics.ram_percent, 1)}% ({systemMetrics.ram_used_MB} / {systemMetrics.ram_total_MB} MB)</span></div>
-              <div className="metric-card">Disk Usage<br /><span>{formatMetric(systemMetrics.disk_percent, 1)}% ({systemMetrics.disk_used_GB} / {systemMetrics.disk_total_GB} GB)</span></div>
-              <div className="metric-card">Network Sent<br /><span>{formatMetric(systemMetrics.net_sent_MB, 2)} MB</span></div>
-              <div className="metric-card">Network Received<br /><span>{formatMetric(systemMetrics.net_recv_MB, 2)} MB</span></div>
-              <div className="metric-card">Processes<br /><span>{systemMetrics.running_processes}</span></div>
-            </div>
-            <div className="metrics-row" style={{ height: '200px' }}>
-              <Line options={systemChartOptions} data={systemChartData} />
-            </div>
-          </div>
-        )}
-        {selectedTab === 'history' && (
-          <div className="history-analytics-section">
-            {/* Historique des détections, stats globales, etc. */}
+
+            {/* Elements from History tab moved here */}
             <div className="metrics-row">
               <div className="metric-card">Total Detections<br /><span>{detectionHistory.length}</span></div>
               <div className="metric-card">Classes Uniques<br /><span>{classHistoryData.labels.length}</span></div>
               <div className="metric-card">Période<br /><span>Dernière heure</span></div>
             </div>
-            
-            {/* Graphiques d'historique */}
+
             <div className="metrics-row" style={{ height: '200px' }}>
               <div className="chart-container">
                 <Line
@@ -520,8 +445,26 @@ const PerformancePanel = ({
                 />
               </div>
             </div>
+
           </div>
         )}
+        {selectedTab === 'system' && (
+          <div className="system-metrics-section">
+            {/* CPU, GPU, RAM, Températures, Réseau */}
+            <div className="metrics-row">
+              <div className="metric-card">CPU Usage<br /><span>{formatMetric(systemMetrics.cpu_percent, 1)}%</span></div>
+              <div className="metric-card">RAM Usage<br /><span>{formatMetric(systemMetrics.ram_percent, 1)}% ({systemMetrics.ram_used_MB} / {systemMetrics.ram_total_MB} MB)</span></div>
+              <div className="metric-card">Disk Usage<br /><span>{formatMetric(systemMetrics.disk_percent, 1)}% ({systemMetrics.disk_used_GB} / {systemMetrics.disk_total_GB} GB)</span></div>
+              <div className="metric-card">Network Sent<br /><span>{formatMetric(systemMetrics.net_sent_MB, 2)} MB</span></div>
+              <div className="metric-card">Network Received<br /><span>{formatMetric(systemMetrics.net_recv_MB, 2)} MB</span></div>
+              <div className="metric-card">Processes<br /><span>{systemMetrics.running_processes}</span></div>
+            </div>
+            <div className="metrics-row" style={{ height: '200px' }}>
+              <Line options={systemChartOptions} data={systemChartData} />
+            </div>
+          </div>
+        )}
+        {/* History tab removed, content moved to model tab */}
         {selectedTab === 'logs' && (
           <div className="system-logs-panel">
             <ul className="logs-list">

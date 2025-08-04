@@ -1,3 +1,4 @@
+
 import cv2
 import torch
 from ultralytics import YOLO
@@ -9,6 +10,7 @@ import queue
 import numpy as np
 import sys
 import importlib.util
+from bytetrack_tracker import ByteTracker
 
 # Importer la configuration des logs depuis app.py
 try:
@@ -59,6 +61,10 @@ class YOLODetector:
         self._frame_times = []
         self.objects_by_class = {}
         
+
+        # --- ByteTrack tracker instance ---
+        self.tracker = ByteTracker(track_thresh=0.5, track_buffer=30, match_thresh=0.8)
+
         self.load_model()
 
     def load_model(self):
@@ -108,6 +114,7 @@ class YOLODetector:
         self.inference_time_ms = (end_time - start_time) * 1000
 
         detections = []
+        dets_for_tracking = []
         for result in results:
             boxes = result.boxes
             if boxes is not None:
@@ -120,7 +127,7 @@ class YOLODetector:
                     # Calcul de la distance réelle (si taille connue)
                     pixel_height = y2 - y1
                     real_height = REAL_SIZES.get(class_name, 1.7)  # défaut: 1.7m
-                    distance = (real_height * FOCAL_LENGTH_PX) / (pixel_height + 1e-6)  # +1e-6 pour éviter div/0
+                    distance = (real_height * FOCAL_LENGTH_PX) / (pixel_height + 1e-6)
 
                     detection_data = {
                         'label': class_name,
@@ -130,24 +137,49 @@ class YOLODetector:
                         'width': x2 - x1,
                         'height': pixel_height,
                         'distance': float(distance),
-                        'timestamp': datetime.now().isoformat()
+                        'timestamp': datetime.now().isoformat(),
+                        'bbox': [x1, y1, x2, y2],
+                        'class_id': cls
                     }
                     detections.append(detection_data)
+                    dets_for_tracking.append([x1, y1, x2, y2, conf, cls])
 
                     # Update objects by class count
                     self.objects_by_class[class_name] = self.objects_by_class.get(class_name, 0) + 1
 
-                    # Draw on the frame
-                    cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-                    cv2.putText(frame, f'{class_name} {conf:.2f}',
-                                (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        # --- Tracking: assign IDs using ByteTracker ---
+        tracks = self.tracker.update(dets_for_tracking, frame)
+        # Map track_id to detection by IoU (simple association)
+        for det in detections:
+            det_bbox = det['bbox']
+            best_iou = 0
+            best_track_id = None
+            for track in tracks:
+                iou = self.tracker._calculate_iou(det_bbox, track['bbox'])
+                if iou > best_iou and iou > self.tracker.match_thresh:
+                    best_iou = iou
+                    best_track_id = track['track_id']
+            det['id'] = best_track_id if best_track_id is not None else -1
+
+        # Draw on the frame
+        for det in detections:
+            x1, y1, x2, y2 = det['bbox']
+            class_name = det['label']
+            conf = det['confidence']
+            track_id = det['id']
+            cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+            cv2.putText(frame, f'{class_name} {conf:.2f} ID:{track_id}',
+                        (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
         # Trigger callback for database saving etc.
         if self.detection_callback and detections:
-            # Assign a unique ID for each detection in the frame
-            for i, det in enumerate(detections):
-                det['id'] = int(time.time() * 1000) + i # pseudo-unique ID
+            for det in detections:
                 self.detection_callback(det)
+
+        # Remove bbox/class_id from output for compatibility
+        for det in detections:
+            det.pop('bbox', None)
+            det.pop('class_id', None)
 
         return frame, detections
 

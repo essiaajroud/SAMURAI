@@ -292,8 +292,8 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], trajectoryHist
             <tr>
               <th>ID</th>
               <th>Label</th>
-              <th>Duration (s)</th>
-              <th>Total Distance</th>
+              <th>Durée de vie (s)</th>
+              <th>Distance caméra-objet</th>
             </tr>
           </thead>
           <tbody>
@@ -302,7 +302,7 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], trajectoryHist
                 <td>{traj.id}</td>
                 <td>{traj.label}</td>
                 <td>{(traj.duration / 1000).toFixed(1)}</td>
-                <td>{traj.totalDistance.toFixed(1)}</td>
+                <td>{traj.totalDistance ? traj.totalDistance.toFixed(1) + ' m' : '--'}</td>
               </tr>
             ))}
           </tbody>

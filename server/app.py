@@ -281,12 +281,26 @@ def get_trajectories():
             # Calculate metrics
             if points:
                 duration = (trajectory.last_seen - trajectory.start_time).total_seconds()
+
+                # --- Calcul de la distance totale caméra-objet (somme des distances GPS) ---
+                # Récupérer la position GPS de la caméra (exemple: depuis la config ou la base)
+                camera_lat, camera_lng = 48.8566, 2.3522  # À remplacer par la vraie position si dispo
+                def haversine(lat1, lng1, lat2, lng2):
+                    from math import radians, sin, cos, sqrt, atan2
+                    R = 6371000  # Rayon Terre en mètres
+                    dlat = radians(lat2 - lat1)
+                    dlng = radians(lng2 - lng1)
+                    a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlng/2)**2
+                    c = 2 * atan2(sqrt(a), sqrt(1-a))
+                    return R * c
+
                 total_distance = 0
-                for i in range(1, len(points)):
-                    dx = points[i].x - points[i-1].x
-                    dy = points[i].y - points[i-1].y
-                    total_distance += (dx**2 + dy**2)**0.5
-                
+                for point in points:
+                    lat = getattr(point, 'latitude', None)
+                    lng = getattr(point, 'longitude', None)
+                    if lat is not None and lng is not None:
+                        total_distance += haversine(camera_lat, camera_lng, lat, lng)
+
                 trajectory_data['duration'] = duration
                 trajectory_data['totalDistance'] = total_distance
                 trajectory_data['avgSpeed'] = total_distance / duration if duration > 0 else 0
@@ -791,9 +805,11 @@ def get_performance():
     # Fragmentation: tracks < 10 frames, Persistence: tracks > 60 frames
     tracks = db.session.query(Trajectory).all()
     lifetimes = []
+    all_points = []
     for t in tracks:
         points = db.session.query(TrajectoryPoint).filter_by(trajectory_id=t.id).order_by(TrajectoryPoint.timestamp).all()
         lifetimes.append(len(points))
+        all_points.append(points)
     short_tracks = sum(1 for l in lifetimes if l < 10)
     long_tracks = sum(1 for l in lifetimes if l > 60)
     fragmentation_rate = short_tracks / len(lifetimes) if lifetimes else 0
@@ -802,13 +818,60 @@ def get_performance():
     median_track_lifetime = float(np.median(lifetimes)) if lifetimes else 0
     total_tracks = len(lifetimes)
 
-    # ID switches: nombre d'objets avec plusieurs trajectoires (même label, id différent)
-    # (approximation simple)
-    label_id_map = {}
-    for t in tracks:
-        key = (t.label, t.object_id)
-        label_id_map.setdefault(t.label, set()).add(t.object_id)
-    id_switches = sum(len(ids) for ids in label_id_map.values() if len(ids) > 1)
+
+    # ID switches avancé :
+    # On considère qu'un id switch a lieu si, pour une même trajectoire (même label, positions proches dans le temps),
+    # l'objet change d'ID (on regarde les détections proches dans l'espace et le temps)
+    id_switches_advanced = 0
+    switch_threshold = 50  # pixels (à adapter selon l'échelle)
+    time_threshold = 1.0   # secondes
+    # On parcourt toutes les trajectoires et on cherche des "crossings" d'ID pour un même label
+    for label in set(t.label for t in tracks):
+        trajs = [t for t in tracks if t.label == label]
+        # Pour chaque paire de trajectoires différentes
+        for i in range(len(trajs)):
+            for j in range(i+1, len(trajs)):
+                points_i = db.session.query(TrajectoryPoint).filter_by(trajectory_id=trajs[i].id).order_by(TrajectoryPoint.timestamp).all()
+                points_j = db.session.query(TrajectoryPoint).filter_by(trajectory_id=trajs[j].id).order_by(TrajectoryPoint.timestamp).all()
+                # On cherche des points proches dans le temps et l'espace
+                for pi in points_i:
+                    for pj in points_j:
+                        dt = abs((pi.timestamp - pj.timestamp).total_seconds())
+                        dist = ((pi.x - pj.x)**2 + (pi.y - pj.y)**2)**0.5
+                        if dt < time_threshold and dist < switch_threshold:
+                            id_switches_advanced += 1
+                            break
+                    else:
+                        continue
+                    break
+
+    # Calcul MOTA/MOTP (simplifié)
+    total_detections = db.session.query(Detection).count()
+    mota = 1.0
+    if total_detections > 0:
+        mota = 1.0 - (id_switches_advanced / total_detections)
+        mota = max(0.0, mota)
+    else:
+        mota = 0.0
+
+    # MOTP: on prend la moyenne de la "dispersion" des points dans chaque trajectoire
+    motp_list = []
+    for points in all_points:
+        if len(points) > 1:
+            dists = [((points[i].x - points[i-1].x)**2 + (points[i].y - points[i-1].y)**2)**0.5 for i in range(1, len(points))]
+            motp_list.extend(dists)
+    motp = float(np.mean(motp_list)) if motp_list else 0.0
+
+    # Detection Rate, Precision, Recall, F1-Score (approximations)
+    # Sans ground truth, on approxime :
+    # - Detection Rate = nb objets suivis / nb détections
+    # - Precision = 1 (pas de FP connu)
+    # - Recall = nb objets suivis / nb détections
+    # - F1 = 2*P*R/(P+R)
+    detection_rate = (total_tracks / total_detections) if total_detections > 0 else 0.0
+    precision = 1.0 if total_tracks > 0 else 0.0
+    recall = detection_rate
+    f1_score = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
 
     # Ajout des métriques au dictionnaire
     perf_metrics['objectCount'] = object_count
@@ -817,6 +880,12 @@ def get_performance():
     perf_metrics['avgTrackLifetime'] = avg_track_lifetime
     perf_metrics['medianTrackLifetime'] = median_track_lifetime
     perf_metrics['totalTracks'] = total_tracks
+    perf_metrics['idSwitches'] = id_switches_advanced
+    perf_metrics['MOTA'] = mota
+    perf_metrics['MOTP'] = motp
+    perf_metrics['totalTracks'] = total_tracks
+    perf_metrics['active_trajectories'] = db.session.query(Trajectory).filter_by(is_active=True).count()
+
     # Overwrite with tracker value if available
     if 'idSwitchCount' in perf_metrics:
         perf_metrics['idSwitches'] = perf_metrics['idSwitchCount']

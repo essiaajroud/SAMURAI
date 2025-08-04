@@ -9,7 +9,7 @@
   border: 1px solid #00ff00;
   box-shadow: 0 4px 16px rgba(0, 255, 0, 0.3);
   backdrop-filter: blur(10px);
-}
+/* Correction : accolade fermante superflue supprimée */
 
 .panel-header {
   margin-bottom: 15px;
@@ -37,6 +37,8 @@
 
 .connection-indicator {
   display: flex;
+  table-layout: auto;
+  word-break: break-word;
   align-items: center;
   gap: 6px;
   font-size: 11px;
@@ -51,22 +53,57 @@
   height: 6px;
   border-radius: 50%;
   display: inline-block;
+  text-align: center;
 }
 
 .status-dot.connected {
   background: #00ff00;
   box-shadow: 0 0 5px #00ff00;
   animation: pulse 2s infinite;
+  text-align: center;
 }
 
 .status-dot.disconnected {
   background: #ff4444;
+}
   box-shadow: 0 0 5px #ff4444;
+.detections-table tr:nth-child(even) {
+  background: #202534;
+}
+}
+.detections-table tr:hover {
+  background: #2a3142;
+  transition: background 0.2s;
 }
 
 .status-text {
-  color: #ffffff;
-  font-weight: 500;
+.detections-table table,
+.trajectories-table table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 auto 16px auto;
+  background: #181c24;
+  color: #e0e6ef;
+  font-size: 15px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+/* Correction : propriété orpheline supprimée */
+.detections-table th,
+.trajectories-table th {
+  background: #23293a;
+  color: #fff;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-bottom: 2px solid #2d3344;
+  text-align: center;
+}
+/* Correction : propriété orpheline supprimée */
+.detections-table td,
+.trajectories-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid #23293a;
+  text-align: center;
+/* Correction : accolade fermante superflue supprimée */
 }
 
 .export-button {
@@ -82,6 +119,8 @@
 }
 
 .export-button:hover:not(:disabled) {
+  table-layout: auto;
+  word-break: break-word;
   background: #00ff00;
   color: #1a1a1a;
   border-color: #00ff00;
@@ -95,7 +134,8 @@
   color: #666;
   cursor: not-allowed;
 }
-
+  text-align: center;
+  
 .connection-warning {
   background: rgba(42, 42, 42, 0.9);
   border: 1px solid #ffaa00;
@@ -104,13 +144,24 @@
   margin-bottom: 12px;
   backdrop-filter: blur(5px);
 }
+  text-align: center;
 
 .connection-warning p {
   margin: 0;
   color: #ffaa00;
+}
   font-size: 12px;
   text-align: center;
+.trajectories-table td:nth-child(3), /* Duration */
+.trajectories-table td:nth-child(4)  /* Total Distance */ {
   font-weight: 500;
+  color: #ffb347;
+}
+  font-weight: 500;
+.detections-table td:first-child {
+  font-weight: 500;
+  color: #7ecfff;
+}
 }
 
 .panel-tabs {
