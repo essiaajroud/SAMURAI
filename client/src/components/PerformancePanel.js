@@ -458,6 +458,14 @@ const PerformancePanel = ({
               <div className="metric-card">Network Sent<br /><span>{formatMetric(systemMetrics.net_sent_MB, 2)} MB</span></div>
               <div className="metric-card">Network Received<br /><span>{formatMetric(systemMetrics.net_recv_MB, 2)} MB</span></div>
               <div className="metric-card">Processes<br /><span>{systemMetrics.running_processes}</span></div>
+              <div className="metric-card">Battery<br /><span>{systemMetrics.battery_percent !== undefined
+                        ? `${formatMetric(systemMetrics.battery_percent, 1)}%`
+                        : '--'}
+                      {systemMetrics.battery_plugged !== undefined
+                        ? (systemMetrics.battery_plugged ? ' (Charging)' : ' (On battery)')
+                        : ''}
+                    </span>
+                  </div>
             </div>
             <div className="metrics-row" style={{ height: '200px' }}>
               <Line options={systemChartOptions} data={systemChartData} />

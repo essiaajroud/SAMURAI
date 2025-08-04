@@ -906,7 +906,8 @@ def get_system_metrics():
         ram = psutil.virtual_memory()
         disk = psutil.disk_usage('/')
         net = psutil.net_io_counters()
-        
+        battery = psutil.sensors_battery()  
+
         data = {
             'cpu_percent': cpu,
             'ram_percent': ram.percent,
@@ -917,7 +918,10 @@ def get_system_metrics():
             'disk_total_GB': round(disk.total / 1024**3, 2),
             'net_sent_MB': round(net.bytes_sent / 1024**2, 2),
             'net_recv_MB': round(net.bytes_recv / 1024**2, 2),
-            'running_processes': len(psutil.pids())
+            'running_processes': len(psutil.pids()),
+            'battery_percent': battery.percent if battery else None,
+            'battery_plugged': battery.power_plugged if battery else None,
+            'battery_secsleft': battery.secsleft if battery else None,
         }
         return jsonify(data)
     except Exception as e:
