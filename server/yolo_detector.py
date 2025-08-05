@@ -1,4 +1,3 @@
-
 import cv2
 import torch
 from ultralytics import YOLO
@@ -11,6 +10,7 @@ import numpy as np
 import sys
 import importlib.util
 from bytetrack_tracker import ByteTracker
+from gpu_config import gpu_config
 
 # Importer la configuration des logs depuis app.py
 try:
@@ -32,6 +32,13 @@ except ImportError:
 
 class YOLODetector:
     def __init__(self, model_path="models/best.onnx", confidence_threshold=0.5):
+        # Configure device based on GPU config
+        self.device = gpu_config.get_device()
+        if ENABLE_LOGS:
+            print(f"🔧 Initializing YOLO detector on {self.device}")
+            if gpu_config.gpu_available:
+                print(f"GPU: {gpu_config.gpu_name}")
+        
         # --- Tracking metrics state ---
         self._tracking_total_matches = 0
         self._tracking_misses = 0
@@ -65,6 +72,12 @@ class YOLODetector:
         # --- ByteTrack tracker instance ---
         self.tracker = ByteTracker(track_thresh=0.5, track_buffer=30, match_thresh=0.8)
 
+        # Initialize with GPU settings
+        if torch.cuda.is_available():
+            torch.backends.cudnn.benchmark = True
+            if hasattr(cv2, 'cuda') and hasattr(cv2.cuda, 'setCudaDevice'):
+                cv2.cuda.setCudaDevice(0)
+        
         self.load_model()
 
     def load_model(self):
@@ -76,6 +89,9 @@ class YOLODetector:
             return
         try:
             self.model = YOLO(self.model_path, task="detect")
+            # Don't call .to(device) for ONNX models
+            if not self.model_path.endswith('.onnx') and torch.cuda.is_available():
+                self.model.to(self.device)
             if ENABLE_LOGS:
                 print(f"✅ Model loaded: {self.model_path}")
         except Exception as e:
@@ -95,93 +111,123 @@ class YOLODetector:
         if self.model is None:
             return frame, []
 
-        # Paramètres caméra (à ajuster selon ton setup)
-        FOCAL_LENGTH_PX = 800  # focale en pixels (exemple)
-        # Tailles réelles moyennes (en mètres) pour chaque classe
-        REAL_SIZES = {
-            'person': 1.7,
-            'soldier': 1.7,
-            'weapon': 1.0,
-            'military_vehicles': 3.0,
-            'civilian_vehicles': 4.5,
-            'military_aircraft': 15.0,
-            'civilian_aircraft': 20.0
-        }
+        try:
+            # For ONNX models, use predict() method with explicit device
+            if self.model_path.endswith('.onnx'):
+                results = self.model.predict(
+                    source=frame,
+                    conf=self.confidence_threshold,
+                    device=0 if gpu_config.gpu_available else 'cpu',
+                    verbose=False
+                )
+            else:
+                # For PyTorch models, use direct inference
+                if gpu_config.gpu_available:
+                    frame_tensor = torch.from_numpy(frame).to(self.device)
+                    results = self.model(frame_tensor, conf=self.confidence_threshold, verbose=False)
+                else:
+                    results = self.model(frame, conf=self.confidence_threshold, verbose=False)
 
-        start_time = time.time()
-        results = self.model(frame, conf=self.confidence_threshold, verbose=False)
-        end_time = time.time()
-        self.inference_time_ms = (end_time - start_time) * 1000
+            # Timing code
+            start_time = time.time()
+            if gpu_config.gpu_available:
+                torch.cuda.synchronize()
+            end_time = time.time()
+            self.inference_time_ms = (end_time - start_time) * 1000
 
-        detections = []
-        dets_for_tracking = []
-        for result in results:
-            boxes = result.boxes
-            if boxes is not None:
-                for box in boxes:
-                    x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-                    cls = int(box.cls[0].cpu().numpy())
-                    conf = float(box.conf[0].cpu().numpy())
-                    class_name = result.names[cls]
+            # Move frame to GPU if available
+            if torch.cuda.is_available():
+                if isinstance(frame, np.ndarray):
+                    frame_tensor = torch.from_numpy(frame).to(self.device)
+                else:
+                    frame_tensor = frame.to(self.device)
+            
+            # Paramètres caméra (à ajuster selon ton setup)
+            FOCAL_LENGTH_PX = 800  # focale en pixels (exemple)
+            # Tailles réelles moyennes (en mètres) pour chaque classe
+            REAL_SIZES = {
+                'person': 1.7,
+                'soldier': 1.7,
+                'weapon': 1.0,
+                'military_vehicles': 3.0,
+                'civilian_vehicles': 4.5,
+                'military_aircraft': 15.0,
+                'civilian_aircraft': 20.0
+            }
 
-                    # Calcul de la distance réelle (si taille connue)
-                    pixel_height = y2 - y1
-                    real_height = REAL_SIZES.get(class_name, 1.7)  # défaut: 1.7m
-                    distance = (real_height * FOCAL_LENGTH_PX) / (pixel_height + 1e-6)
+            detections = []
+            dets_for_tracking = []
+            for result in results:
+                boxes = result.boxes
+                if boxes is not None:
+                    for box in boxes:
+                        x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                        cls = int(box.cls[0].cpu().numpy())
+                        conf = float(box.conf[0].cpu().numpy())
+                        class_name = result.names[cls]
 
-                    detection_data = {
-                        'label': class_name,
-                        'confidence': conf,
-                        'x': (x1 + x2) / 2,
-                        'y': (y1 + y2) / 2,
-                        'width': x2 - x1,
-                        'height': pixel_height,
-                        'distance': float(distance),
-                        'timestamp': datetime.now().isoformat(),
-                        'bbox': [x1, y1, x2, y2],
-                        'class_id': cls
-                    }
-                    detections.append(detection_data)
-                    dets_for_tracking.append([x1, y1, x2, y2, conf, cls])
+                        # Calcul de la distance réelle (si taille connue)
+                        pixel_height = y2 - y1
+                        real_height = REAL_SIZES.get(class_name, 1.7)  # défaut: 1.7m
+                        distance = (real_height * FOCAL_LENGTH_PX) / (pixel_height + 1e-6)
 
-                    # Update objects by class count
-                    self.objects_by_class[class_name] = self.objects_by_class.get(class_name, 0) + 1
+                        detection_data = {
+                            'label': class_name,
+                            'confidence': conf,
+                            'x': (x1 + x2) / 2,
+                            'y': (y1 + y2) / 2,
+                            'width': x2 - x1,
+                            'height': pixel_height,
+                            'distance': float(distance),
+                            'timestamp': datetime.now().isoformat(),
+                            'bbox': [x1, y1, x2, y2],
+                            'class_id': cls
+                        }
+                        detections.append(detection_data)
+                        dets_for_tracking.append([x1, y1, x2, y2, conf, cls])
 
-        # --- Tracking: assign IDs using ByteTracker ---
-        tracks = self.tracker.update(dets_for_tracking, frame)
-        # Map track_id to detection by IoU (simple association)
-        for det in detections:
-            det_bbox = det['bbox']
-            best_iou = 0
-            best_track_id = None
-            for track in tracks:
-                iou = self.tracker._calculate_iou(det_bbox, track['bbox'])
-                if iou > best_iou and iou > self.tracker.match_thresh:
-                    best_iou = iou
-                    best_track_id = track['track_id']
-            det['id'] = best_track_id if best_track_id is not None else -1
+                        # Update objects by class count
+                        self.objects_by_class[class_name] = self.objects_by_class.get(class_name, 0) + 1
 
-        # Draw on the frame
-        for det in detections:
-            x1, y1, x2, y2 = det['bbox']
-            class_name = det['label']
-            conf = det['confidence']
-            track_id = det['id']
-            cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-            cv2.putText(frame, f'{class_name} {conf:.2f} ID:{track_id}',
-                        (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
-        # Trigger callback for database saving etc.
-        if self.detection_callback and detections:
+            # --- Tracking: assign IDs using ByteTracker ---
+            tracks = self.tracker.update(dets_for_tracking, frame)
+            # Map track_id to detection by IoU (simple association)
             for det in detections:
-                self.detection_callback(det)
+                det_bbox = det['bbox']
+                best_iou = 0
+                best_track_id = None
+                for track in tracks:
+                    iou = self.tracker._calculate_iou(det_bbox, track['bbox'])
+                    if iou > best_iou and iou > self.tracker.match_thresh:
+                        best_iou = iou
+                        best_track_id = track['track_id']
+                det['id'] = best_track_id if best_track_id is not None else -1
 
-        # Remove bbox/class_id from output for compatibility
-        for det in detections:
-            det.pop('bbox', None)
-            det.pop('class_id', None)
+            # Draw on the frame
+            for det in detections:
+                x1, y1, x2, y2 = det['bbox']
+                class_name = det['label']
+                conf = det['confidence']
+                track_id = det['id']
+                cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+                cv2.putText(frame, f'{class_name} {conf:.2f} ID:{track_id}',
+                            (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
-        return frame, detections
+            # Trigger callback for database saving etc.
+            if self.detection_callback and detections:
+                for det in detections:
+                    self.detection_callback(det)
+
+            # Remove bbox/class_id from output for compatibility
+            for det in detections:
+                det.pop('bbox', None)
+                det.pop('class_id', None)
+
+            return frame, detections
+        except Exception as e:
+            if ENABLE_LOGS:
+                print(f"❌ Error during detection: {e}")
+            return frame, []
 
     def process_frame(self, frame_np):
         """
@@ -202,46 +248,73 @@ class YOLODetector:
         return detections
 
     def _process_stream(self, stream_source, started_event):
-        """
-        Private method to process a video stream from a file or network URL.
-        Args:
-            stream_source (str): Path to the video or network URL.
-            started_event (threading.Event): Event to signal when startup is complete.
-        """
+        """Private method to process a video stream from a file or network URL."""
         if ENABLE_LOGS:
             print(f"[YOLO] Attempting to open stream: {stream_source}")
         
-        # Check if it's a file path that exists, otherwise assume it's a URL
-        is_file = os.path.exists(stream_source)
+        max_retries = 3
+        retry_delay = 2
+        cap = None
         
         try:
-            cap = cv2.VideoCapture(stream_source)
-            if not cap.isOpened():
-                if ENABLE_LOGS:
-                    print(f"❌ Unable to open stream source: {stream_source}")
-                started_event.set()  # Signal completion to unblock the caller
-                return
+            for attempt in range(max_retries):
+                try:
+                    # For network streams, validate connection first
+                    if '://' in stream_source:
+                        import socket
+                        from urllib.parse import urlparse
+                        parsed = urlparse(stream_source)
+                        host = parsed.hostname
+                        port = parsed.port or 8080
+                        
+                        # Test TCP connection
+                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        sock.settimeout(5)
+                        result = sock.connect_ex((host, port))
+                        sock.close()
+                        
+                        if result != 0:
+                            raise ConnectionError(f"Cannot connect to {host}:{port}")
 
-            self.is_running = True
-            self.current_video = stream_source
-            started_event.set()  # Signal successful start
-            if ENABLE_LOGS:
-                print(f"🎬 Streaming started for: {stream_source}")
+                    cap = cv2.VideoCapture(stream_source)
+                    if not cap.isOpened():
+                        raise ConnectionError("Failed to open video stream")
 
+                    # Stream opened successfully
+                    self.is_running = True
+                    self.current_video = stream_source
+                    started_event.set()
+                    
+                    if ENABLE_LOGS:
+                        print(f"✅ Stream connected: {stream_source}")
+                    break  # Success - exit retry loop
+                    
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        if ENABLE_LOGS:
+                            print(f"⚠️ Attempt {attempt + 1}/{max_retries} failed: {str(e)}")
+                            print(f"   Retrying in {retry_delay} seconds...")
+                        time.sleep(retry_delay)
+                    else:
+                        raise  # Re-raise the last exception
+
+            # Stream processing loop
             while self.is_running:
                 ret, frame = cap.read()
                 if not ret:
-                    if is_file: # If it's a file, loop it
+                    if '://' in stream_source:
+                        if ENABLE_LOGS:
+                            print("⚠️ Network stream interrupted - attempting reconnect")
+                        cap.release()
+                        cap = cv2.VideoCapture(stream_source)
+                        continue
+                    else:
                         if ENABLE_LOGS:
                             print("Looping video file...")
                         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                         continue
-                    else: # If it's a network stream and it ends, stop.
-                        if ENABLE_LOGS:
-                            print("Network stream ended.")
-                        break
-                
-                # Execute detection
+
+                # Execute detection and process frame
                 drawn_frame, detections = self._execute_detection(frame)
                 
                 # Debug log pour les détections
@@ -265,23 +338,15 @@ class YOLODetector:
                     self.fps = (len(self._frame_times) - 1) / time_diff if time_diff > 0 else 0
             
         except Exception as e:
-            error_message = str(e)
             if ENABLE_LOGS:
-                if "Connection" in error_message and "timed out" in error_message:
-                    print(f"❌ Erreur de connexion au flux: Timeout. Vérifiez que l'appareil est accessible et que l'URL est correcte.")
-                    print(f"   URL tentée: {stream_source}")
-                    print(f"   Pour IP Webcam, essayez les formats: http://IP:PORT/video ou http://IP:PORT/videofeed")
-                elif "Connection" in error_message and "refused" in error_message:
-                    print(f"❌ Connexion refusée. Vérifiez que le serveur est en cours d'exécution sur l'appareil cible.")
-                    print(f"   URL tentée: {stream_source}")
-                else:
-                    print(f"❌ Error during streaming: {e}")
+                print(f"❌ Stream error: {str(e)}")
+            started_event.set()  # Signal failure
+            
         finally:
-            if 'cap' in locals() and cap.isOpened():
+            if cap is not None and cap.isOpened():
                 cap.release()
             self.is_running = False
             self.current_video = None
-            # Clear the queue
             while not self.frame_queue.empty():
                 self.frame_queue.get()
             if ENABLE_LOGS:
