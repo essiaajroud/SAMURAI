@@ -11,6 +11,8 @@ const MapDemo = () => {
   const [isDemoRunning, setIsDemoRunning] = useState(false);
   const [demoInterval, setDemoInterval] = useState(null);
   const [cameraLocation, setCameraLocation] = useState([48.8566, 2.3522]); // Default Paris
+  const [alerts, setAlerts] = useState([]);
+
   // Fetch camera GPS location from backend
   useEffect(() => {
     axios.get('/api/camera-location')
@@ -20,6 +22,18 @@ const MapDemo = () => {
         }
       })
       .catch(() => {});
+  }, []);
+
+  // Fetch real-time alerts from backend every 5s
+  useEffect(() => {
+    const fetchAlerts = () => {
+      axios.get('/api/alerts')
+        .then(res => setAlerts(res.data.alerts || []))
+        .catch(() => setAlerts([]));
+    };
+    fetchAlerts();
+    const interval = setInterval(fetchAlerts, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   // Démarrer la démonstration
@@ -94,6 +108,7 @@ const MapDemo = () => {
         isConnected={true}
         mapCenter={cameraLocation}
         zoomLevel={13}
+        alerts={alerts}
       />
     </div>
   );

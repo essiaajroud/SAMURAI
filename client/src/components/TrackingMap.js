@@ -8,7 +8,8 @@ const TrackingMap = ({
   trajectoryHistory = {}, 
   isConnected = false,
   mapCenter = [34.0, 9.0], // Tunisie par défaut
-  zoomLevel = 13 
+  zoomLevel = 13,
+  alerts = []
 }) => {
   const mapRef = useRef(null);
   const [map, setMap] = useState(null);
@@ -16,7 +17,56 @@ const TrackingMap = ({
   const [trajectories, setTrajectories] = useState([]);
   const [showTrajectories, setShowTrajectories] = useState(true);
   const [showCurrentDetections, setShowCurrentDetections] = useState(true);
+  const [showAlerts, setShowAlerts] = useState(true);
   const [cameraMarker, setCameraMarker] = useState(null);
+  const [alertMarkers, setAlertMarkers] = useState([]);
+  // Afficher les alertes sur la carte
+  useEffect(() => {
+    if (!map || !showAlerts || typeof window.L === 'undefined') return;
+    // Supprimer les anciens marqueurs d'alerte
+    alertMarkers.forEach(marker => {
+      if (marker && marker.remove) {
+        try { marker.remove(); } catch (e) { /* ignore */ }
+      }
+TrackingMap.propTypes = {
+  detections: PropTypes.array,
+  trajectoryHistory: PropTypes.object,
+  isConnected: PropTypes.bool,
+  mapCenter: PropTypes.array,
+  zoomLevel: PropTypes.number,
+  alerts: PropTypes.array,
+};
+    });
+    const newMarkers = [];
+    alerts.forEach((alert, idx) => {
+      if (typeof alert.lat === 'number' && typeof alert.lon === 'number') {
+        const color = alert.color || '#ff0000';
+        const marker = window.L.circleMarker([alert.lat, alert.lon], {
+          radius: 12,
+          fillColor: color,
+          color: '#222',
+          weight: 3,
+          opacity: 1,
+          fillOpacity: 0.9
+        }).addTo(map);
+        const popupContent = `
+          <div class="alert-popup">
+            <h4 style="color:${color}">Alerte: ${alert.type?.toUpperCase() || ''}</h4>
+            <p><strong>Message:</strong> ${alert.message}</p>
+            <p><strong>Zone:</strong> ${alert.zone || 'inconnue'}</p>
+            <p><strong>Position:</strong> ${alert.lat.toFixed(5)}, ${alert.lon.toFixed(5)}</p>
+            <p><strong>Heure:</strong> ${alert.timestamp ? new Date(alert.timestamp).toLocaleString() : ''}</p>
+          </div>
+        `;
+        marker.bindPopup(popupContent);
+        newMarkers.push(marker);
+      }
+    });
+    setAlertMarkers(newMarkers);
+    return () => {
+      newMarkers.forEach(marker => { if (marker && marker.remove) marker.remove(); });
+    };
+  }, [map, alerts, showAlerts]);
   // Add camera marker at mapCenter
   useEffect(() => {
     if (!map || typeof window.L === 'undefined' || !mapCenter) return;
@@ -296,6 +346,16 @@ const TrackingMap = ({
               onChange={(e) => setShowTrajectories(e.target.checked)}
             />
             Trajectoires
+          </label>
+        </div>
+        <div className="control-group">
+          <label className="control-label">
+            <input
+              type="checkbox"
+              checked={showAlerts}
+              onChange={e => setShowAlerts(e.target.checked)}
+            />
+            Alertes IA/carto
           </label>
         </div>
         <div className="control-group">

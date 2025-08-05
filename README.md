@@ -2,6 +2,7 @@
 
 Système de détection militaire avec historisation complète des détections et trajectoires d'objets.
 
+
 ## 🚀 Fonctionnalités
 
 ### Frontend (React)
@@ -9,14 +10,35 @@ Système de détection militaire avec historisation complète des détections et
 - **Suivi de trajectoires** : Visualisation des mouvements d'objets
 - **Historique complet** : Stockage et consultation des détections passées
 - **Analytics avancés** : Statistiques et métriques de performance
+- **Alertes intelligentes IA/OSM** : Affichage dynamique d'alertes (danger, anomalie, sécurisé) issues du croisement entre détection IA et cartographie OSM, visibles dans les logs et sur la carte (marqueurs colorés, popups, contrôle de visibilité)
 - **Interface moderne** : Dashboard professionnel avec thème militaire
 
 ### Backend (Flask)
 - **API RESTful** : Endpoints pour la gestion des données
 - **Base de données SQLite** : Stockage persistant des détections
 - **Gestion des trajectoires** : Suivi complet des mouvements d'objets
+- **Alertes dynamiques** : Génération d'alertes en temps réel via IA et croisement cartographique OSM (zones militaires/civiles)
 - **Nettoyage automatique** : Suppression des données anciennes
 - **Export de données** : Sauvegarde des historiques
+
+## 🛡️ Alertes intelligentes (IA + OSM)
+
+Le système génère des alertes en temps réel selon la logique suivante :
+- **Arme détectée en zone non-militaire** : alerte danger (rouge)
+- **Arme détectée en zone militaire** : alerte sécurisé (vert)
+- **Personne avec vitesse anormale** : alerte anomalie (orange)
+
+Les alertes sont affichées :
+- Dans les logs (onglet logs du dashboard)
+- Sur la carte (marqueurs colorés, popups, contrôle de visibilité)
+
+**API :**
+- `/api/alerts` : retourne la liste des alertes en temps réel (voir `server/README.md` pour détails)
+
+**Techniques :**
+- Croisement IA (YOLO, tracking) et cartographie OSMnx (zones militaires)
+- Backend : Python Flask, OSMnx, Shapely
+- Frontend : React, Leaflet, intégration dynamique
 
 ## 📁 Structure du Projet
 

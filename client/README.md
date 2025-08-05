@@ -2,6 +2,14 @@
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+
+## Fonctionnalités spécifiques
+
+- **Alertes en temps réel** : Les alertes générées par l'IA et la cartographie OSM sont affichées dynamiquement dans l'onglet logs et sur la carte (marqueurs colorés, popups, contrôle de visibilité).
+- **Intégration API** : Le frontend interroge périodiquement `/api/alerts` pour récupérer les alertes et les afficher dans `PerformancePanel` (logs) et `TrackingMap` (carte).
+
+---
+
 ## Available Scripts
 
 In the project directory, you can run:

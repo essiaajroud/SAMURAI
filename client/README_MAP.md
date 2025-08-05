@@ -109,10 +109,30 @@ import MapDemo from './components/MapDemo';
 }
 ```
 
-## 🛠️ Utilitaires
+## � Affichage des alertes sur la carte
 
-Le fichier `utils/mapUtils.js` contient des fonctions utiles :
+Depuis la version dynamique, la carte affiche aussi les alertes générées par l'IA et la cartographie OSM :
+- Marqueurs colorés (rouge = danger, vert = sécurisé, orange = anomalie)
+- Popups détaillées (type, message, coordonnées, zone)
+- Contrôle pour afficher/masquer les alertes
+- Polling automatique de l'API `/api/alerts` toutes les 5s
 
+### Exemple d'alerte (format)
+```json
+{
+  "type": "danger",
+  "message": "Arme détectée en zone non-militaire (objet 42)",
+  "lat": 48.8566,
+  "lon": 2.3522,
+  "zone": "civile",
+  "timestamp": "2025-08-05T12:34:56Z",
+  "color": "red"
+}
+```
+
+## �🛠️ Utilitaires
+
+Le fichier `utils/mapUtils.js` contient des fonctions utiles :
 - `generateRandomPosition()` - Génère une position aléatoire
 - `generateTestDetections(count)` - Génère des détections de test
 - `generateTestTrajectories(count)` - Génère des trajectoires de test

@@ -19,10 +19,15 @@ from PIL import Image
 import numpy as np
 import psutil
 import random
+import osmnx as ox
+import shapely.geometry
 
 
 # Configuration pour les logs
 ENABLE_LOGS = True  # Active l'affichage des logs pour le diagnostic
+
+# Cache des polygones OSM
+zone_polygons = {'military': []}
 
 # --- YOLO Detector Initialization ---
 try:
@@ -168,6 +173,18 @@ def save_yolo_detection(detection_data):
         if ENABLE_LOGS:
             print(f"❌ Error saving detection: {e}")
         db.session.rollback()
+
+def load_osm_zones(center_lat, center_lon, dist_m=3000):
+    # Télécharge les polygones de zones militaires autour du rover
+    gdf_mil = ox.geometries_from_point((center_lat, center_lon), tags={'landuse': 'military'}, dist=dist_m)
+    zone_polygons['military'] = list(gdf_mil.geometry.values)
+
+def point_in_military_zone(lat, lon):
+    pt = shapely.geometry.Point(lon, lat)
+    for poly in zone_polygons['military']:
+        if poly is not None and poly.is_valid and poly.contains(pt):
+            return True
+    return False
 
 # --- Set YOLO Callback if Available ---
 if YOLO_AVAILABLE:
@@ -1089,6 +1106,78 @@ def get_current_detections():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+
+@app.route('/api/alerts', methods=['GET'])
+def api_alerts():
+    rover_lat = float(request.args.get('lat', 48.8566))
+    rover_lon = float(request.args.get('lon', 2.3522))
+    if not zone_polygons['military']:
+        load_osm_zones(rover_lat, rover_lon)
+
+    # Récupérer les détections récentes (ex: 2 dernières minutes)
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    time_limit = now - timedelta(minutes=1)
+    # On suppose que Detection a les champs x/y = lon/lat ou latitude/longitude
+    recent_detections = Detection.query.filter(Detection.timestamp >= time_limit).all()
+
+    # Construire une liste d'objets: {class, lat, lon, id, ...}
+    detections = []
+    for d in recent_detections:
+        # On suppose x=lon, y=lat (adapter si besoin)
+        detections.append({
+            'class': d.label,
+            'lat': getattr(d, 'y', None),
+            'lon': getattr(d, 'x', None),
+            'id': d.object_id,
+            'timestamp': d.timestamp.isoformat(),
+            'speed': d.speed,
+            'distance': d.distance
+        })
+
+    alerts = []
+    # Logique IA simple :
+    # - Arme détectée en zone non-militaire => danger
+    # - Arme détectée en zone militaire => sécurisé
+    # - Personne détectée avec vitesse anormale (> 5 m/s) => comportement suspect
+    for det in detections:
+        if det['class'] is None or det['lat'] is None or det['lon'] is None:
+            continue
+        # Arme détectée
+        if 'weapon' in det['class'].lower() or 'gun' in det['class'].lower() or 'rifle' in det['class'].lower():
+            in_mil = point_in_military_zone(det['lat'], det['lon'])
+            if not in_mil:
+                alerts.append({
+                    'type': 'danger',
+                    'message': f"Arme détectée en zone non-militaire (objet {det['id']})",
+                    'lat': det['lat'],
+                    'lon': det['lon'],
+                    'zone': 'civile',
+                    'timestamp': det['timestamp'],
+                    'color': 'red'
+                })
+            else:
+                alerts.append({
+                    'type': 'secure',
+                    'message': f"Arme détectée en zone militaire (objet {det['id']})",
+                    'lat': det['lat'],
+                    'lon': det['lon'],
+                    'zone': 'militaire',
+                    'timestamp': det['timestamp'],
+                    'color': 'green'
+                })
+        # Personne avec vitesse anormale
+        elif 'person' in det['class'].lower() and det.get('speed') is not None and det['speed'] > 5:
+            alerts.append({
+                'type': 'anomaly',
+                'message': f"Personne (objet {det['id']}) avec vitesse anormale : {det['speed']:.1f} m/s",
+                'lat': det['lat'],
+                'lon': det['lon'],
+                'zone': 'inconnue',
+                'timestamp': det['timestamp'],
+                'color': 'orange'
+            })
+    return jsonify({'alerts': alerts})
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

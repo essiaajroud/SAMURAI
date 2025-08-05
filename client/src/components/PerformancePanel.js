@@ -1,6 +1,7 @@
 // PerformancePanel.js - Shows system performance, analytics, and logs
 // Provides graphs, historical stats, and system log display
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import PropTypes from 'prop-types';
 import { Line, Bar } from 'react-chartjs-2';
 import {
@@ -49,12 +50,36 @@ const PerformancePanel = ({
 }) => {
   const [selectedTab, setSelectedTab] = useState('model'); // Default to model tab
   const [systemAlerts, setSystemAlerts] = useState([]);
-  
-  // Fonction pour générer des alertes système basées sur les données
-  const generateSystemAlerts = () => {
+  const [realtimeAlerts, setRealtimeAlerts] = useState([]);
+
+  // Récupérer les alertes dynamiques du backend
+  useEffect(() => {
+    if (selectedTab === 'logs') {
+      // Appel API pour récupérer les alertes
+      axios.get('/api/alerts')
+        .then(res => {
+          setRealtimeAlerts(res.data.alerts || []);
+        })
+        .catch(() => setRealtimeAlerts([]));
+    }
+    // Rafraîchir toutes les 5 secondes si logs affichés
+    let interval = null;
+    if (selectedTab === 'logs') {
+      interval = setInterval(() => {
+        axios.get('/api/alerts')
+          .then(res => {
+            setRealtimeAlerts(res.data.alerts || []);
+          })
+          .catch(() => setRealtimeAlerts([]));
+      }, 5000);
+    }
+    return () => interval && clearInterval(interval);
+  }, [selectedTab]);
+
+  // Génère les alertes système locales (connexion, CPU, RAM, caméra)
+  const generateSystemAlerts = React.useCallback(() => {
     const alerts = [];
     const now = new Date();
-    
     // Alerte de connexion backend
     alerts.push({
       id: 'backend-connection',
@@ -62,7 +87,6 @@ const PerformancePanel = ({
       level: isConnected ? 'info' : 'error',
       message: `Backend ${isConnected ? 'connecté' : 'non connecté'}`
     });
-    
     // Si le backend n'est pas connecté, ajouter une alerte pour indiquer que l'interface est en mode hors ligne
     if (!isConnected) {
       alerts.push({
@@ -71,11 +95,9 @@ const PerformancePanel = ({
         level: 'info',
         message: 'Interface en mode hors ligne - Les fonctionnalités nécessitant le backend ne sont pas disponibles'
       });
-      
       // Ne pas afficher d'autres alertes si le backend n'est pas connecté
       return alerts;
     }
-    
     // Alertes basées sur les métriques système (seulement si le backend est connecté)
     if (systemMetrics) {
       // Alerte de température CPU
@@ -87,7 +109,6 @@ const PerformancePanel = ({
           message: `Température CPU anormale (${systemMetrics.cpu_temp}°C) - ${systemMetrics.cpu_temp > 90 ? 'ARRÊT IMMINENT' : 'Réduction de performance activée'}`
         });
       }
-      
       // Alerte d'utilisation CPU
       if (systemMetrics.cpu_percent && systemMetrics.cpu_percent > 90) {
         alerts.push({
@@ -97,7 +118,6 @@ const PerformancePanel = ({
           message: `Utilisation CPU élevée (${systemMetrics.cpu_percent}%) - Performance dégradée possible`
         });
       }
-      
       // Alerte d'utilisation RAM
       if (systemMetrics.ram_percent && systemMetrics.ram_percent > 85) {
         alerts.push({
@@ -108,54 +128,7 @@ const PerformancePanel = ({
         });
       }
     }
-    
-    // Alertes basées sur les détections (seulement si le backend est connecté)
-    if (detectionHistory && detectionHistory.length > 0) {
-      // Prendre les 5 dernières détections
-      const recentDetections = detectionHistory.slice(-5);
-      
-      recentDetections.forEach(detection => {
-        if (!detection.class) return;
-        
-        // Alerte pour armes détectées
-        if (detection.class.toLowerCase().includes('weapon') ||
-            detection.class.toLowerCase().includes('gun') ||
-            detection.class.toLowerCase().includes('rifle')) {
-          
-          // Vérifier si la zone est civile (simulation)
-          const isInCivilianZone = Math.random() > 0.5; // Simulation
-          
-          if (isInCivilianZone) {
-            alerts.push({
-              id: `weapon-${detection.id || Date.now()}`,
-              timestamp: detection.timestamp || now,
-              level: 'critical',
-              message: `Détection d&apos;arme en zone civile - Coordonnées: ${detection.coordinates || '48.8566, 2.3522'}`
-            });
-          }
-        }
-        
-        // Alerte pour personnes en zone restreinte
-        if (detection.class.toLowerCase().includes('person') ||
-            detection.class.toLowerCase().includes('civilian')) {
-          
-          // Vérifier si la zone est militaire (simulation)
-          const isInMilitaryZone = Math.random() > 0.7; // Simulation
-          
-          if (isInMilitaryZone) {
-            alerts.push({
-              id: `restricted-${detection.id || Date.now()}`,
-              timestamp: detection.timestamp || now,
-              level: 'critical',
-              message: `Civil détecté en zone militaire restreinte - Alerte de sécurité niveau ${Math.floor(Math.random() * 3) + 1}`
-            });
-          }
-        }
-      });
-    }
-    
     // N'afficher les alertes de statut caméra que si le backend est connecté
-    // Statut de la caméra basé sur l'état de détection plutôt que sur une simulation aléatoire
     if (modelMetrics && modelMetrics.fps && modelMetrics.fps > 0) {
       alerts.push({
         id: 'camera-status',
@@ -171,14 +144,13 @@ const PerformancePanel = ({
         message: 'Caméra non détectée ou flux vidéo inactif'
       });
     }
-    
     return alerts;
-  };
+  }, [isConnected, systemMetrics, modelMetrics]);
   
   // Mettre à jour les alertes lorsque les données changent
   useEffect(() => {
     setSystemAlerts(generateSystemAlerts());
-  }, [isConnected, systemMetrics, detectionHistory]);
+  }, [isConnected, systemMetrics, detectionHistory, generateSystemAlerts]);
 
   // --- Chart Data and Options ---
 
@@ -364,10 +336,12 @@ const PerformancePanel = ({
     },
   };
 
+
+
   return (
     <div className="performance-panel" style={{ height: '520px', overflow: 'auto', boxSizing: 'border-box' }}>
       <div className="panel-header">
-        <h2>Performance & Analytics</h2>
+        <h2 style={{ margin: 0 }}>Performance & Analytics</h2>
         <div className="panel-tabs">
           <button className={selectedTab === 'model' ? 'active tab-button' : 'tab-button'} onClick={() => setSelectedTab('model')}>Model Performance</button>
           <button className={selectedTab === 'system' ? 'active tab-button' : 'tab-button'} onClick={() => setSelectedTab('system')}>System Performance</button>
@@ -476,15 +450,32 @@ const PerformancePanel = ({
         {selectedTab === 'logs' && (
           <div className="system-logs-panel">
             <ul className="logs-list">
-              {/* Alertes système générées dynamiquement */}
-              {systemAlerts.map((alert) => (
+              {/* Alertes dynamiques IA/carto */}
+              {realtimeAlerts.length > 0 && realtimeAlerts.map((alert, idx) => (
+                <li key={`realtime-alert-${idx}`} className={`log-entry`} style={{ borderLeft: `6px solid ${alert.color || '#888'}` }}>
+                  <span className="log-timestamp">{alert.timestamp ? new Date(alert.timestamp).toLocaleString() : ''}</span>
+                  <span className={`log-level`} style={{ color: alert.color || '#888', fontWeight: 'bold' }}>[{alert.type?.toUpperCase() || 'ALERT'}]</span>
+                  <span className="log-message">{alert.message}</span>
+                  {alert.lat && alert.lon && (
+                    <span className="log-coords" style={{ marginLeft: 8, fontSize: '0.9em', color: '#aaa' }}>
+                      ({alert.lat.toFixed(5)}, {alert.lon.toFixed(5)})
+                    </span>
+                  )}
+                  {alert.zone && (
+                    <span className="log-zone" style={{ marginLeft: 8, fontSize: '0.9em', color: '#aaa' }}>
+                      [Zone: {alert.zone}]
+                    </span>
+                  )}
+                </li>
+              ))}
+              {/* Alertes système classiques (fallback) */}
+              {realtimeAlerts.length === 0 && systemAlerts.map((alert) => (
                 <li key={alert.id} className={`log-entry ${alert.level}`}>
                   <span className="log-timestamp">{alert.timestamp.toLocaleString()}</span>
                   <span className={`log-level ${alert.level}`}>[{alert.level.toUpperCase()}]</span>
                   <span className="log-message">{alert.message}</span>
                 </li>
               ))}
-              
               {/* Logs dynamiques de l'application */}
               {logs && logs.length > 0 && logs.map((log, idx) => (
                 <li key={`app-log-${idx}`} className={`log-entry ${log.level?.toLowerCase() || 'info'}`}>
@@ -493,9 +484,8 @@ const PerformancePanel = ({
                   <span className="log-message">{log.message || String(log)}</span>
                 </li>
               ))}
-              
               {/* Message si aucun log n'est disponible */}
-              {systemAlerts.length === 0 && (!logs || logs.length === 0) && (
+              {realtimeAlerts.length === 0 && systemAlerts.length === 0 && (!logs || logs.length === 0) && (
                 <li className="log-entry info">
                   <span className="log-timestamp">{new Date().toLocaleString()}</span>
                   <span className="log-level info">[INFO]</span>
@@ -509,7 +499,6 @@ const PerformancePanel = ({
     </div>
   );
 };
-
 PerformancePanel.propTypes = {
   modelMetrics: PropTypes.object,
   modelMetricsHistory: PropTypes.array,

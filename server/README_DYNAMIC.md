@@ -84,7 +84,19 @@ cd client
 npm start
 ```
 
+
 ## 📊 Dynamic API
+
+### **Alertes intelligentes IA + OSM**
+```http
+GET /api/alerts
+```
+- Retourne la liste des alertes générées dynamiquement selon la logique IA et la cartographie OSM.
+- **Réponse** : liste d'alertes `{type, message, lat, lon, zone, timestamp, color}`
+- **Logique** :
+  - Arme détectée hors zone militaire : danger (rouge)
+  - Arme détectée en zone militaire : sécurisé (vert)
+  - Personne avec vitesse anormale : anomalie (orange)
 
 ### **Real-Time Detections**
 ```http
