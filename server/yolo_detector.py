@@ -11,6 +11,8 @@ import sys
 import importlib.util
 from bytetrack_tracker import ByteTracker
 from gpu_config import gpu_config
+from system_monitor import system_monitor
+import onnxruntime as ort
 
 # Importer la configuration des logs depuis app.py
 try:
@@ -78,6 +80,9 @@ class YOLODetector:
             if hasattr(cv2, 'cuda') and hasattr(cv2.cuda, 'setCudaDevice'):
                 cv2.cuda.setCudaDevice(0)
         
+        # Get ONNX providers from system monitor
+        self.onnx_providers = system_monitor.onnx_providers
+        
         self.load_model()
 
     def load_model(self):
@@ -112,29 +117,43 @@ class YOLODetector:
             return frame, []
 
         try:
-            # For ONNX models, use predict() method with explicit device
+            # Measure inference time precisely
+            start_time = time.perf_counter()
+            
+            # For ONNX models, use ONNX Runtime with GPU
             if self.model_path.endswith('.onnx'):
-                results = self.model.predict(
-                    source=frame,
-                    conf=self.confidence_threshold,
-                    device=0 if gpu_config.gpu_available else 'cpu',
-                    verbose=False
-                )
+                if gpu_config.gpu_available:
+                    # Ensure frame is on GPU
+                    frame_tensor = torch.from_numpy(frame).cuda()
+                    results = self.model.predict(
+                        source=frame_tensor,
+                        conf=self.confidence_threshold,
+                        device=0,
+                        verbose=False
+                    )
+                else:
+                    results = self.model.predict(
+                        source=frame,
+                        conf=self.confidence_threshold,
+                        device='cpu',
+                        verbose=False
+                    )
             else:
-                # For PyTorch models, use direct inference
                 if gpu_config.gpu_available:
                     frame_tensor = torch.from_numpy(frame).to(self.device)
-                    results = self.model(frame_tensor, conf=self.confidence_threshold, verbose=False)
+                    with torch.cuda.amp.autocast():
+                        results = self.model(frame_tensor, conf=self.confidence_threshold, verbose=False)
+                    torch.cuda.synchronize()  # Ensure GPU operations completed
                 else:
                     results = self.model(frame, conf=self.confidence_threshold, verbose=False)
-
-            # Timing code
-            start_time = time.time()
-            if gpu_config.gpu_available:
-                torch.cuda.synchronize()
-            end_time = time.time()
+            
+            # Calculate precise inference time
+            end_time = time.perf_counter()
             self.inference_time_ms = (end_time - start_time) * 1000
 
+            # Get system metrics
+            self.system_metrics = system_monitor.get_metrics()
+            
             # Move frame to GPU if available
             if torch.cuda.is_available():
                 if isinstance(frame, np.ndarray):
@@ -165,6 +184,10 @@ class YOLODetector:
                         cls = int(box.cls[0].cpu().numpy())
                         conf = float(box.conf[0].cpu().numpy())
                         class_name = result.names[cls]
+
+                        # Éviter les détections parasites/dupliquées
+                        if any(self._check_overlap([x1, y1, x2, y2], det['bbox']) > 0.8 for det in detections):
+                            continue
 
                         # Calcul de la distance réelle (si taille connue)
                         pixel_height = y2 - y1
@@ -203,15 +226,38 @@ class YOLODetector:
                         best_track_id = track['track_id']
                 det['id'] = best_track_id if best_track_id is not None else -1
 
-            # Draw on the frame
+            # Draw on the frame - Fix text positioning and appearance
             for det in detections:
                 x1, y1, x2, y2 = det['bbox']
                 class_name = det['label']
                 conf = det['confidence']
                 track_id = det['id']
+                
+                # Calculate text size for better positioning
+                text = f'{class_name} {conf:.2f}'
+                (text_width, text_height), baseline = cv2.getTextSize(
+                    text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2
+                )
+                
+                # Draw bounding box
                 cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-                cv2.putText(frame, f'{class_name} {conf:.2f} ID:{track_id}',
-                            (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                
+                # Draw text background
+                cv2.rectangle(frame, 
+                    (int(x1), int(y1) - text_height - 8),
+                    (int(x1) + text_width + 4, int(y1)),
+                    (0, 255, 0), -1)
+                
+                # Draw text
+                cv2.putText(frame, text,
+                    (int(x1) + 2, int(y1) - 5),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+                
+                # Draw ID if available
+                if track_id != -1:
+                    cv2.putText(frame, f'ID:{track_id}',
+                        (int(x1) + 2, int(y1) + 15),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
             # Trigger callback for database saving etc.
             if self.detection_callback and detections:
@@ -461,26 +507,53 @@ class YOLODetector:
         }
 
     def get_performance_metrics(self):
-        """Returns a dictionary with current performance metrics."""
-        # Compute MOTA, MOTP, ID Switches from tracking state
-        mota = 1.0
-        motp = 0.0
-        if self._tracking_total_gt > 0:
-            mota = 1.0 - (self._tracking_misses + self._tracking_false_positives + self._tracking_id_switches) / self._tracking_total_gt
-            mota = max(0.0, mota)
-        if self._tracking_total_matches > 0:
-            motp = self._tracking_total_distance / self._tracking_total_matches
-        return {
-            "fps": self.fps,
-            "inferenceTime": self.inference_time_ms,
-            "mota": mota,
-            "motp": motp,
-            "idSwitchCount": self._tracking_id_switches
-        }
+        """Returns performance metrics including system monitoring"""
+        try:
+            sys_metrics = system_monitor.get_metrics()
+            metrics = {
+                "fps": self.fps,
+                "inferenceTime": self.inference_time_ms,
+                "cpuUsage": round(sys_metrics['cpu_usage'], 1),
+                "gpuUsage": round(sys_metrics['gpu_usage'], 1),
+                "gpuMemoryUsage": round(sys_metrics['gpu_memory_used'], 1),
+                "memoryUsage": round(sys_metrics['memory_usage'], 1)
+            }
+            
+            # Add additional debug info if logging enabled
+            if ENABLE_LOGS and metrics["gpuUsage"] == 0:
+                print(f"Debug - Raw metrics: {sys_metrics}")
+                
+            return metrics
+        except Exception as e:
+            print(f"Error getting metrics: {e}")
+            return {
+                "fps": self.fps,
+                "inferenceTime": self.inference_time_ms,
+                "cpuUsage": 0,
+                "gpuUsage": 0,
+                "gpuMemoryUsage": 0,
+                "memoryUsage": 0
+            }
 
     def get_objects_by_class(self):
         """Returns a dictionary with the count of detected objects per class."""
         return self.objects_by_class
+
+    def _check_overlap(self, bbox1, bbox2):
+        """Calculate IoU between two bounding boxes"""
+        x1 = max(bbox1[0], bbox2[0])
+        y1 = max(bbox1[1], bbox2[1])
+        x2 = min(bbox1[2], bbox2[2])
+        y2 = min(bbox1[3], bbox2[3])
+        
+        if x2 < x1 or y2 < y1:
+            return 0.0
+            
+        intersection = (x2 - x1) * (y2 - y1)
+        area1 = (bbox1[2] - bbox1[0]) * (bbox1[3] - bbox1[1])
+        area2 = (bbox2[2] - bbox2[0]) * (bbox2[3] - bbox2[1])
+        
+        return intersection / (area1 + area2 - intersection)
 
 # Global detector instance
 detector = YOLODetector()

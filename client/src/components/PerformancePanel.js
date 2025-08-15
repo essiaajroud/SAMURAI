@@ -281,14 +281,21 @@ const PerformancePanel = ({
     datasets: [
       {
         label: 'CPU Usage (%)',
-        data: systemMetricsHistory.map(m => m.cpu_percent),
+        data: systemMetricsHistory.map(m => m.cpuUsage),
         borderColor: 'rgb(255, 99, 132)',
         backgroundColor: 'rgba(255, 99, 132, 0.5)',
         yAxisID: 'y',
       },
       {
+        label: 'GPU Usage (%)',
+        data: systemMetricsHistory.map(m => m.gpuUsage),
+        borderColor: 'rgb(75, 192, 192)',
+        backgroundColor: 'rgba(75, 192, 192, 0.5)',
+        yAxisID: 'y',
+      },
+      {
         label: 'RAM Usage (%)',
-        data: systemMetricsHistory.map(m => m.ram_percent),
+        data: systemMetricsHistory.map(m => m.memoryUsage),
         borderColor: 'rgb(54, 162, 235)',
         backgroundColor: 'rgba(54, 162, 235, 0.5)',
         yAxisID: 'y',
@@ -426,7 +433,9 @@ const PerformancePanel = ({
           <div className="system-metrics-section">
             {/* CPU, GPU, RAM, Températures, Réseau */}
             <div className="metrics-row">
-              <div className="metric-card">CPU Usage<br /><span>{formatMetric(systemMetrics.cpu_percent, 1)}%</span></div>
+              <div className="metric-card">CPU Usage<br /><span>{formatMetric(systemMetrics.cpuUsage, 1)}%</span></div>
+              <div className="metric-card">GPU Usage<br /><span>{formatMetric(systemMetrics.gpuUsage, 1)}%</span></div>
+              <div className="metric-card">GPU Memory<br /><span>{formatMetric(systemMetrics.gpuMemoryUsage, 1)}%</span></div>
               <div className="metric-card">RAM Usage<br /><span>{formatMetric(systemMetrics.ram_percent, 1)}% ({systemMetrics.ram_used_MB} / {systemMetrics.ram_total_MB} MB)</span></div>
               <div className="metric-card">Disk Usage<br /><span>{formatMetric(systemMetrics.disk_percent, 1)}% ({systemMetrics.disk_used_GB} / {systemMetrics.disk_total_GB} GB)</span></div>
               <div className="metric-card">Network Sent<br /><span>{formatMetric(systemMetrics.net_sent_MB, 2)} MB</span></div>

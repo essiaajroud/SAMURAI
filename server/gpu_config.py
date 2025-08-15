@@ -8,8 +8,23 @@ class GPUConfig:
         self.gpu_name = None
         self.gpu_memory = None
         self.device = None
+        self.nvml_available = False
         self.optimization_level = 'balanced'
+        self._init_nvml()
         self.initialize()
+
+    def _init_nvml(self):
+        """Initialize NVML with fallback"""
+        try:
+            import pynvml
+            pynvml.nvmlInit()
+            self.nvml = pynvml
+            self.nvml_available = True
+            print("✅ NVML initialized successfully")
+        except Exception as e:
+            print(f"⚠️ NVML not available: {e}")
+            print("ℹ️ Using PyTorch for basic GPU metrics")
+            self.nvml = None
 
     def initialize(self):
         """Initialize GPU configuration"""
@@ -17,8 +32,15 @@ class GPUConfig:
             try:
                 self.device = torch.device('cuda:0')
                 self.gpu_name = torch.cuda.get_device_name(0)
-                props = torch.cuda.get_device_properties(0)
-                self.gpu_memory = props.total_memory / (1024**3)  # Convert to GB
+                
+                # Get memory info through PyTorch if NVML is not available
+                if not self.nvml_available:
+                    props = torch.cuda.get_device_properties(0)
+                    self.gpu_memory = props.total_memory / (1024**3)  # Convert to GB
+                else:
+                    handle = self.nvml.nvmlDeviceGetHandleByIndex(0)
+                    info = self.nvml.nvmlDeviceGetMemoryInfo(handle)
+                    self.gpu_memory = info.total / (1024**3)
                 
                 # Configure CUDA settings
                 torch.backends.cudnn.benchmark = True
@@ -29,7 +51,6 @@ class GPUConfig:
                 print(f"   Memory: {self.gpu_memory:.1f} GB")
             except Exception as e:
                 print(f"⚠️ GPU initialization error: {e}")
-                self.gpu_available = False
                 self.device = torch.device('cpu')
         else:
             self.device = torch.device('cpu')
