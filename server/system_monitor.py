@@ -1,3 +1,5 @@
+# system_monitor.py (Version finale améliorée)
+
 import psutil
 import torch
 import time
@@ -7,87 +9,121 @@ import onnxruntime as ort
 class SystemMonitor:
     def __init__(self):
         self.gpu_available = torch.cuda.is_available()
+        self.nvml_available = False
+        self.nvml = None
+        self.gpu_handle = None
+
         self._metrics = {
-            'cpu_usage': 0,
-            'gpu_usage': 0,
-            'gpu_memory_used': 0,
-            'memory_usage': 0
+            'cpu_usage': 0.0,
+            'gpu_usage': 0.0,
+            'gpu_memory_used': 0.0,
+            'memory_usage': 0.0
         }
         self._running = False
+        
         self._setup_onnx_providers()
+        self._init_nvml()
         self._start_monitoring()
 
     def _setup_onnx_providers(self):
-        """Setup ONNX Runtime providers"""
+        """Détermine les meilleurs providers ONNX Runtime disponibles."""
         self.onnx_providers = []
-        if self.gpu_available:
-            # Configure CUDA provider options
-            cuda_provider_options = {
-                "device_id": 0,
-                "arena_extend_strategy": "kNextPowerOfTwo",
-                "gpu_mem_limit": 2 * 1024 * 1024 * 1024,  # 2GB
-                "cudnn_conv_algo_search": "EXHAUSTIVE",
-                "do_copy_in_default_stream": True,
-            }
-            self.onnx_providers.append(('CUDAExecutionProvider', cuda_provider_options))
-        self.onnx_providers.append('CPUExecutionProvider')
+        available_providers = ort.get_available_providers()
         
-        # Initialize ONNX Runtime session for monitoring
+        if self.gpu_available and 'CUDAExecutionProvider' in available_providers:
+            self.onnx_providers.append('CUDAExecutionProvider')
+        
+        self.onnx_providers.append('CPUExecutionProvider')
+        print(f"✅ System monitor configured ONNX providers: {self.onnx_providers}")
+
+    def _init_nvml(self):
+        """Initialise la bibliothèque NVML pour une surveillance GPU précise."""
+        if not self.gpu_available:
+            print("ℹ️ GPU non disponible, la surveillance GPU est désactivée.")
+            return
+
         try:
-            self.ort_session = ort.InferenceSession("models/best.onnx", 
-                                                  providers=self.onnx_providers)
-            print(f"✅ ONNX Runtime initialized with providers: {self.ort_session.get_providers()}")
+            import pynvml
+            pynvml.nvmlInit()
+            self.nvml = pynvml
+            self.gpu_handle = self.nvml.nvmlDeviceGetHandleByIndex(0)
+            self.nvml_available = True
+            print("✅ NVML initialisé pour la surveillance du GPU.")
+        except ImportError:
+             print("❌ ERREUR : La bibliothèque 'pynvml' n'est pas installée. Exécutez 'pip install pynvml'.")
+             self.nvml_available = False
         except Exception as e:
-            print(f"⚠️ ONNX Runtime initialization error: {e}")
+            # Affiche une erreur beaucoup plus détaillée !
+            print(f"❌ ERREUR CRITIQUE : NVML n'a pas pu être initialisé. Les métriques GPU seront à 0.")
+            print(f"   Raison probable : Problème avec les pilotes NVIDIA ou permissions.")
+            print(f"   Message d'erreur original : {e}")
+            self.nvml_available = False
 
     def _start_monitoring(self):
-        """Start background monitoring thread"""
+        """Démarre le thread de surveillance en arrière-plan."""
+        # Fait une première lecture immédiate pour éviter d'afficher des 0 au début
+        self._update_all_metrics()
+        
         self._running = True
         self.monitor_thread = threading.Thread(target=self._monitor_loop)
         self.monitor_thread.daemon = True
         self.monitor_thread.start()
+        
+    def _update_all_metrics(self):
+        """Méthode unique pour mettre à jour toutes les métriques en une fois."""
+        # --- CORRECTION CPU ---
+        # Utilise un intervalle pour une mesure correcte
+        self._metrics['cpu_usage'] = psutil.cpu_percent(interval=0.5)
+        self._metrics['memory_usage'] = psutil.virtual_memory().percent
+
+        # Métriques GPU
+        if self.nvml_available and self.gpu_handle:
+            try:
+                utilization = self.nvml.nvmlDeviceGetUtilizationRates(self.gpu_handle)
+                self._metrics['gpu_usage'] = float(utilization.gpu)
+
+                mem_info = self.nvml.nvmlDeviceGetMemoryInfo(self.gpu_handle)
+                self._metrics['gpu_memory_used'] = (mem_info.used / mem_info.total) * 100 if mem_info.total > 0 else 0.0
+            except Exception:
+                self._metrics['gpu_usage'] = 0.0
+                self._metrics['gpu_memory_used'] = 0.0
+        else:
+            # Si NVML a échoué, on met explicitement à 0
+            self._metrics['gpu_usage'] = 0.0
+            self._metrics['gpu_memory_used'] = 0.0
 
     def _monitor_loop(self):
-        """Monitor system metrics"""
+        """Boucle qui met à jour les métriques système périodiquement."""
+        psutil.cpu_percent(interval=None)
+        time.sleep(1)
         while self._running:
-            # CPU & Memory
-            self._metrics['cpu_usage'] = psutil.cpu_percent(interval=0.1)
+            # Utilise un intervalle pour une mesure correcte
+            self._metrics['cpu_usage'] = psutil.cpu_percent(interval=None) # Non-blocking
             self._metrics['memory_usage'] = psutil.virtual_memory().percent
-
-            # GPU Metrics
-            if self.gpu_available:
+            if self.nvml_available and self.gpu_handle:
                 try:
-                    # GPU Memory from PyTorch
-                    allocated = torch.cuda.memory_allocated()
-                    reserved = torch.cuda.memory_reserved()
-                    total = torch.cuda.get_device_properties(0).total_memory
-                    
-                    self._metrics['gpu_memory_used'] = (allocated / total) * 100
-                    
-                    # GPU Usage from CUDA Events
-                    current_stream = torch.cuda.current_stream()
-                    start_event = torch.cuda.Event(enable_timing=True)
-                    end_event = torch.cuda.Event(enable_timing=True)
-                    
-                    start_event.record()
-                    torch.cuda.synchronize()
-                    end_event.record()
-                    end_event.synchronize()
-                    
-                    # Calculate GPU utilization
-                    gpu_active_time = start_event.elapsed_time(end_event)
-                    self._metrics['gpu_usage'] = min(100.0, (gpu_active_time / 10.0) * 100)
-                except Exception as e:
-                    print(f"Error updating GPU metrics: {e}")
-
-            time.sleep(0.5)
+                    utilization = self.nvml.nvmlDeviceGetUtilizationRates(self.gpu_handle)
+                    self._metrics['gpu_usage'] = float(utilization.gpu)
+                    mem_info = self.nvml.nvmlDeviceGetMemoryInfo(self.gpu_handle)
+                    self._metrics['gpu_memory_used'] = (mem_info.used / mem_info.total) * 100 if mem_info.total > 0 else 0.0
+                except Exception:
+                    self._metrics['gpu_usage'] = 0.0
+                    self._metrics['gpu_memory_used'] = 0.0
+            
+            time.sleep(1) # Met à jour toutes les secondes
 
     def get_metrics(self):
-        """Get current metrics"""
+        """Retourne une copie des dernières métriques collectées."""
         return self._metrics.copy()
 
     def __del__(self):
+        """Nettoie les ressources à la destruction de l'objet."""
         self._running = False
+        if self.nvml_available:
+            try:
+                self.nvml.nvmlShutdown()
+            except:
+                pass
 
-# Global instance
+# Instance globale unique qui sera importée partout
 system_monitor = SystemMonitor()

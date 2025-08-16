@@ -19,9 +19,21 @@ function App() {
   const [isDetectionStarted, setIsDetectionStarted] = useState(false);
   const [sourceType, setSourceType] = useState('video'); // Default to video
   const [networkUrl, setNetworkUrl] = useState('http://192.168.1.16:8080/video'); // Format pour IP Webcam
-
-  const [performanceData, setPerformanceData] = useState({});
-  const [systemMetricsHistory, setSystemMetricsHistory] = useState([]);
+  const [performanceData, setPerformanceData] = useState({
+  fps: 0,
+  inferenceTime: 0,
+  cpuUsage: 0,
+  gpuUsage: 0,
+  gpuMemoryUsage: 0,
+  memoryUsage: 0,
+  objectCount: 0,
+  totalTracks: 0,
+  active_trajectories: 0,
+  objectsByClass: {},
+  timestamp: new Date().toLocaleTimeString()
+});
+  //const [performanceData, setPerformanceData] = useState({});
+  //const [systemMetricsHistory, setSystemMetricsHistory] = useState([]);
   const [modelMetricsHistory, setModelMetricsHistory] = useState([]);
 
   const [detectionHistory, setDetectionHistory] = useState([]); // Detection history
@@ -295,78 +307,54 @@ function App() {
           const newHistory = [...prevHistory, newMetrics];
           return newHistory.slice(-60); // Keep last 60 points
         });
-      }
+      }else {
+      throw new Error('Server responded with an error');
+    }
     } catch (error) {
       console.error('Error loading performance data:', error);
       // Initialiser les données de performance avec des valeurs par défaut
       setPerformanceData({
         fps: 0,
-        inferenceTime: 0,
-        objectCount: 0,
-        detectionRate: 0,
-        precision: 0,
-        recall: 0,
-        f1Score: 0,
-        timestamp: new Date().toLocaleTimeString()
+      inferenceTime: 0,
+      cpuUsage: 0,
+      gpuUsage: 0,
+      gpuMemoryUsage: 0,
+      memoryUsage: 0,
+      objectCount: 0,
+      totalTracks: 0,
+      active_trajectories: 0,
+      objectsByClass: {},
+      timestamp: new Date().toLocaleTimeString()
       });
     }
   }, [isConnected]);
 
   // --- System Metrics Fetch ---
-  const loadSystemMetrics = useCallback(async () => {
-    if (!isConnected) return;
-    try {
-      const response = await fetch(`${API_BASE_URL}/system-metrics`);
-      if (response.ok) {
-        const newMetrics = await response.json();
-        newMetrics.timestamp = new Date().toLocaleTimeString(); // Add timestamp for chart labels
-        setSystemMetricsHistory(prevHistory => {
-          const newHistory = [...prevHistory, newMetrics];
-          // Keep the last 60 data points
-          return newHistory.slice(-60);
-        });
-      }
-    } catch (error) {
-      console.error('Error loading system metrics:', error);
-      // Initialiser les métriques système avec des valeurs par défaut
-      const defaultMetrics = {
-        cpu_percent: 0,
-        ram_percent: 0,
-        disk_percent: 0,
-        timestamp: new Date().toLocaleTimeString()
-      };
-      setSystemMetricsHistory(prevHistory => {
-        const newHistory = [...prevHistory, defaultMetrics];
-        return newHistory.slice(-60);
-      });
-    }
-  }, [isConnected]);
+  
 
   // --- Effects: Periodic Data Refresh when Running ---
   useEffect(() => {
+    let detectionIntervalId = null;
+    let metricsIntervalId = null;
     if (isConnected && systemStatus === 'running') {
       loadCurrentDetections();
       loadPerformanceData();
       loadDetectionHistory(); // Also refresh history
       // Refresh every second
       // Récupérer les détections plus fréquemment pour une meilleure réactivité
-      const detectionInterval = setInterval(() => {
-        loadCurrentDetections();
-      }, 200); // 5 fois par seconde
-      
-      // Récupérer les autres données moins fréquemment
-      const metricsInterval = setInterval(() => {
+      detectionIntervalId = setInterval(loadCurrentDetections, 200);
+      metricsIntervalId = setInterval(() => {
         loadPerformanceData();
         loadDetectionHistory();
-        loadSystemMetrics();
       }, 1000);
-      
-      return () => {
-        clearInterval(detectionInterval);
-        clearInterval(metricsInterval);
-      };
+    
+
+    return () => {
+      clearInterval(detectionIntervalId);
+      clearInterval(metricsIntervalId);
+    };
     }
-  }, [isConnected, systemStatus, loadCurrentDetections, loadPerformanceData, loadDetectionHistory, loadSystemMetrics]);
+  }, [isConnected, systemStatus, loadCurrentDetections, loadPerformanceData, loadDetectionHistory]);
 
   // --- Effects: Periodic Cleanup ---
   useEffect(() => {
@@ -484,8 +472,8 @@ function App() {
         <PerformancePanel
           modelMetrics={performanceData}
           modelMetricsHistory={modelMetricsHistory}
-          systemMetrics={systemMetricsHistory.length > 0 ? systemMetricsHistory[systemMetricsHistory.length - 1] : {}}
-          systemMetricsHistory={systemMetricsHistory}
+          systemMetrics={performanceData}
+          systemMetricsHistory={modelMetricsHistory}
           logs={logs}
           detectionHistory={detectionHistory}
           isConnected={isConnected}

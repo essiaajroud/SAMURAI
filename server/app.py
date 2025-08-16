@@ -21,10 +21,14 @@ import psutil
 import random
 import osmnx as ox
 import shapely.geometry
+#from config import ENABLE_LOGS
+from config import get_config
+config = get_config()
+ENABLE_LOGS = config.ENABLE_LOGS
 
 
 # Configuration pour les logs
-ENABLE_LOGS = True  # Active l'affichage des logs pour le diagnostic
+#ENABLE_LOGS = True  # Active l'affichage des logs pour le diagnostic
 
 # Cache des polygones OSM
 zone_polygons = {'military': []}
@@ -803,7 +807,7 @@ def get_performance():
     """
     Returns real-time performance data from the YOLO detector.
     """
-    if not YOLO_AVAILABLE or not detector.is_running:
+    if not YOLO_AVAILABLE :
         return jsonify({
             "fps": 0,
             "inferenceTime": 0,
@@ -813,6 +817,9 @@ def get_performance():
     # Get metrics from the detector
     perf_metrics = detector.get_performance_metrics() if hasattr(detector, 'get_performance_metrics') else {}
 
+    print(f"DEBUG - Sending performance metrics: {perf_metrics}")
+
+
     # Get object count from the database (last 2 seconds for a more "current" feel)
     now = datetime.now(timezone.utc)
     two_seconds_ago = now - timedelta(seconds=2)
@@ -820,98 +827,47 @@ def get_performance():
 
     # Tracking metrics from DB (fragmentation, persistence, id switches)
     # Fragmentation: tracks < 10 frames, Persistence: tracks > 60 frames
-    tracks = db.session.query(Trajectory).all()
-    lifetimes = []
-    all_points = []
-    for t in tracks:
-        points = db.session.query(TrajectoryPoint).filter_by(trajectory_id=t.id).order_by(TrajectoryPoint.timestamp).all()
-        lifetimes.append(len(points))
-        all_points.append(points)
-    short_tracks = sum(1 for l in lifetimes if l < 10)
-    long_tracks = sum(1 for l in lifetimes if l > 60)
-    fragmentation_rate = short_tracks / len(lifetimes) if lifetimes else 0
-    persistence_score = long_tracks / len(lifetimes) if lifetimes else 0
-    avg_track_lifetime = float(np.mean(lifetimes)) if lifetimes else 0
-    median_track_lifetime = float(np.median(lifetimes)) if lifetimes else 0
-    total_tracks = len(lifetimes)
+    try:
+        with app.app_context():
+            tracks = db.session.query(Trajectory).all()
+            lifetimes = []
+            all_points = []
+            for t in tracks:
+                points = db.session.query(TrajectoryPoint).filter_by(trajectory_id=t.id).all()
+                lifetimes.append(len(points))
+                all_points.append(points)
 
+            # --- CORRECTION CRITIQUE : Conversion des types NumPy en types Python ---
+            
+            # Calculs avec NumPy
+            np_avg_track_lifetime = np.mean(lifetimes) if lifetimes else 0.0
+            np_median_track_lifetime = np.median(lifetimes) if lifetimes else 0.0
 
-    # ID switches avancé :
-    # On considère qu'un id switch a lieu si, pour une même trajectoire (même label, positions proches dans le temps),
-    # l'objet change d'ID (on regarde les détections proches dans l'espace et le temps)
-    id_switches_advanced = 0
-    switch_threshold = 50  # pixels (à adapter selon l'échelle)
-    time_threshold = 1.0   # secondes
-    # On parcourt toutes les trajectoires et on cherche des "crossings" d'ID pour un même label
-    for label in set(t.label for t in tracks):
-        trajs = [t for t in tracks if t.label == label]
-        # Pour chaque paire de trajectoires différentes
-        for i in range(len(trajs)):
-            for j in range(i+1, len(trajs)):
-                points_i = db.session.query(TrajectoryPoint).filter_by(trajectory_id=trajs[i].id).order_by(TrajectoryPoint.timestamp).all()
-                points_j = db.session.query(TrajectoryPoint).filter_by(trajectory_id=trajs[j].id).order_by(TrajectoryPoint.timestamp).all()
-                # On cherche des points proches dans le temps et l'espace
-                for pi in points_i:
-                    for pj in points_j:
-                        dt = abs((pi.timestamp - pj.timestamp).total_seconds())
-                        dist = ((pi.x - pj.x)**2 + (pi.y - pj.y)**2)**0.5
-                        if dt < time_threshold and dist < switch_threshold:
-                            id_switches_advanced += 1
-                            break
-                    else:
-                        continue
-                    break
+            motp_list = []
+            for points in all_points:
+                if len(points) > 1:
+                    dists = [((points[i].x - points[i-1].x)**2 + (points[i].y - points[i-1].y)**2)**0.5 for i in range(1, len(points))]
+                    motp_list.extend(dists)
+            np_motp = np.mean(motp_list) if motp_list else 0.0
 
-    # Calcul MOTA/MOTP (simplifié)
-    total_detections = db.session.query(Detection).count()
-    mota = 1.0
-    if total_detections > 0:
-        mota = 1.0 - (id_switches_advanced / total_detections)
-        mota = max(0.0, mota)
-    else:
-        mota = 0.0
+            # Ajout au dictionnaire en convertissant explicitement avec float()
+            perf_metrics['avgTrackLifetime'] = float(np_avg_track_lifetime)
+            perf_metrics['medianTrackLifetime'] = float(np_median_track_lifetime)
+            perf_metrics['MOTP'] = float(np_motp)
+            
+            # Les autres métriques qui n'utilisent pas NumPy peuvent être ajoutées directement
+            short_tracks = sum(1 for l in lifetimes if l < 10)
+            long_tracks = sum(1 for l in lifetimes if l > 60)
+            perf_metrics['fragmentationRate'] = short_tracks / len(lifetimes) if lifetimes else 0
+            perf_metrics['persistenceScore'] = long_tracks / len(lifetimes) if lifetimes else 0
+            
+            # Note: totalTracks et objectCount viennent déjà de get_performance_metrics, pas besoin de les recalculer.
 
-    # MOTP: on prend la moyenne de la "dispersion" des points dans chaque trajectoire
-    motp_list = []
-    for points in all_points:
-        if len(points) > 1:
-            dists = [((points[i].x - points[i-1].x)**2 + (points[i].y - points[i-1].y)**2)**0.5 for i in range(1, len(points))]
-            motp_list.extend(dists)
-    motp = float(np.mean(motp_list)) if motp_list else 0.0
+    except Exception as e:
+        print(f"❌ Error during database metric calculation: {e}")
 
-    # Detection Rate, Precision, Recall, F1-Score (approximations)
-    # Sans ground truth, on approxime :
-    # - Detection Rate = nb objets suivis / nb détections
-    # - Precision = 1 (pas de FP connu)
-    # - Recall = nb objets suivis / nb détections
-    # - F1 = 2*P*R/(P+R)
-    detection_rate = (total_tracks / total_detections) if total_detections > 0 else 0.0
-    precision = 1.0 if total_tracks > 0 else 0.0
-    recall = detection_rate
-    f1_score = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
-
-    # Ajout des métriques au dictionnaire
-    perf_metrics['objectCount'] = object_count
-    perf_metrics['fragmentationRate'] = fragmentation_rate
-    perf_metrics['persistenceScore'] = persistence_score
-    perf_metrics['avgTrackLifetime'] = avg_track_lifetime
-    perf_metrics['medianTrackLifetime'] = median_track_lifetime
-    perf_metrics['totalTracks'] = total_tracks
-    perf_metrics['idSwitches'] = id_switches_advanced
-    perf_metrics['MOTA'] = mota
-    perf_metrics['MOTP'] = motp
-    perf_metrics['totalTracks'] = total_tracks
-    perf_metrics['active_trajectories'] = db.session.query(Trajectory).filter_by(is_active=True).count()
-
-    # Overwrite with tracker value if available
-    if 'idSwitchCount' in perf_metrics:
-        perf_metrics['idSwitches'] = perf_metrics['idSwitchCount']
-
-    # Use hasattr for safety
-    if hasattr(detector, 'get_objects_by_class'):
-        perf_metrics['objectsByClass'] = getattr(detector, 'get_objects_by_class')()
-    else:
-        perf_metrics['objectsByClass'] = {}
+    # Log final avant envoi
+    print(f"DEBUG - FINAL metrics sent to frontend: {perf_metrics}")
 
     return jsonify(perf_metrics)
 

@@ -13,6 +13,8 @@ class Config:
     PORT = 5000
     DEBUG = True
 
+    ENABLE_LOGS = True
+
     # Database configuration
     DATABASE_PATH = 'instance/detection_history.db'
     SQLALCHEMY_DATABASE_URI = f'sqlite:///{DATABASE_PATH}'

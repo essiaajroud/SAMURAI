@@ -30,6 +30,7 @@ ChartJS.register(
   Legend
 );
 
+
 // Helper to format numbers
 const formatMetric = (value, decimals = 3) => {
   if (value === null || value === undefined || isNaN(value)) {
@@ -48,6 +49,11 @@ const PerformancePanel = ({
   detectionHistory = [],
   isConnected = false
 }) => {
+
+  console.log("PerformancePanel received systemMetrics:", systemMetrics);
+  console.log("PerformancePanel received modelMetrics:", modelMetrics);
+  
+
   const [selectedTab, setSelectedTab] = useState('model'); // Default to model tab
   const [systemAlerts, setSystemAlerts] = useState([]);
   const [realtimeAlerts, setRealtimeAlerts] = useState([]);

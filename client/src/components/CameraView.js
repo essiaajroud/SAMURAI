@@ -210,16 +210,7 @@ const CameraView = ({
           className="detection-overlay"
         />
       </div>
-      {/* Video controls */}
-      <div className="video-controls">
-        <button
-          className={`control-button ${isPlaying ? 'pause' : 'play'}`}
-          onClick={onPause}
-          disabled={!isDetectionStarted || !isConnected}
-        >
-          {isPlaying ? '⏸️ Pause' : '▶️ Lecture'}
-        </button>
-      </div>
+      
     </div>
   );
 };
