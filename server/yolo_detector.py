@@ -9,6 +9,7 @@ from datetime import datetime
 import threading
 import queue
 import numpy as np
+import traceback
 
 # Imports de configuration
 from config import get_config
@@ -80,7 +81,8 @@ class YOLODetector:
                 source=frame,
                 conf=self.confidence_threshold,
                 device=self.device,
-                verbose=False
+                verbose=False,
+                plots=False  # --- FIX: Prevent the library from drawing its own labels
             )
             # Synchronisation pour une mesure précise sur GPU
             if self.device.type == 'cuda':
@@ -92,10 +94,16 @@ class YOLODetector:
 
             now = time.time()
             self._frame_times.append(now)
-            self._frame_times = self._frame_times[-20:] # Garder les 20 derniers
+            self._frame_times = self._frame_times[-20:]
             if len(self._frame_times) > 1:
                 time_diff = self._frame_times[-1] - self._frame_times[0]
                 self.fps = (len(self._frame_times) - 1) / time_diff if time_diff > 0 else 0.0
+
+            FOCAL_LENGTH_PX = 800
+            REAL_SIZES = {
+                'person': 1.7, 'soldier': 1.7, 'weapon': 1.0, 'military_vehicles': 3.0,
+                'civilian_vehicles': 4.5, 'military_aircraft': 15.0, 'civilian_aircraft': 20.0
+            }
 
             # --- 3. TRAITEMENT DES DÉTECTIONS ET TRACKING ---
             detections = []
@@ -111,14 +119,31 @@ class YOLODetector:
                         conf = float(box.conf[0].cpu().numpy())
                         cls = int(box.cls[0].cpu().numpy())
                         class_name = result.names.get(cls, 'unknown')
-
-                        self.objects_by_class[class_name] = self.objects_by_class.get(class_name, 0) + 1
+                        pixel_height = y2 - y1
+                        real_height = REAL_SIZES.get(class_name, 1.7)  # défaut: 1.7m
+                        distance = (real_height * FOCAL_LENGTH_PX) / (pixel_height + 1e-6)
+                        base_lat, base_lon = 48.8566, 2.3522
+                        latitude_factice = base_lat + np.random.uniform(-0.05, 0.05)
+                        longitude_factice = base_lon + np.random.uniform(-0.05, 0.05)
                         
-                        detections.append({
-                            'label': class_name, 'confidence': conf, 'x': (x1 + x2) / 2, 'y': (y1 + y2) / 2,
-                            'bbox': [x1, y1, x2, y2]
-                        })
+                        detection_data = {
+                            'label': class_name,
+                            'confidence': conf,
+                            'x': (x1 + x2) / 2,
+                            'y': (y1 + y2) / 2,
+                            'width': x2 - x1,
+                            'height': pixel_height,
+                            'distance': float(distance),
+                            'timestamp': datetime.now().isoformat(),
+                            'bbox': [x1, y1, x2, y2],
+                            'class_id': cls,
+                            # --- ET AJOUTEZ LES NOUVELLES CLÉS ICI ---
+                            'latitude': latitude_factice,
+                            'longitude': longitude_factice,
+                        }
+                        detections.append(detection_data)
                         dets_for_tracking.append([x1, y1, x2, y2, conf, cls])
+                        self.objects_by_class[class_name] = self.objects_by_class.get(class_name, 0) + 1
 
             tracks = self.tracker.update(dets_for_tracking)
 
@@ -220,12 +245,23 @@ class YOLODetector:
 
     def generate_stream_frames(self):
         """Génère les frames pour le flux web."""
+        TARGET_FPS = 15
+        JPEG_QUALITY = 60 # Lower quality = smaller size = faster transmission
+        # ------------------------------------
+
+        frame_interval = 1.0 / TARGET_FPS
         while True: # Boucle infinie pour garder la connexion ouverte
             try:
+                start_time = time.time()
                 frame = self.frame_queue.get(timeout=1)
+                encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY]
                 _, jpeg = cv2.imencode('.jpg', frame)
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
+                elapsed_time = time.time() - start_time
+                sleep_time = frame_interval - elapsed_time
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
             except queue.Empty:
                 if not self.is_running:
                     # Si le stream est arrêté, on sort de la boucle pour fermer la connexion

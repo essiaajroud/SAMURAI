@@ -7,6 +7,18 @@
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
 }
 
+.tracking-map {
+  position: relative;
+  background: #1a1a1a;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+
+  /* --- C'EST LA LIGNE LA PLUS IMPORTANTE --- */
+  height: 500px; /* Ou 100% si le conteneur parent a une hauteur fixe */
+  width: 100%;
+}
+
 .map-controls {
   display: flex;
   justify-content: space-between;

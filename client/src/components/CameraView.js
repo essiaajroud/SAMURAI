@@ -180,7 +180,7 @@ const CameraView = ({
       </div>
 
       {/* Video feed and detection overlay */}
-      <div className="video-container" style={{ height: '520px', width: '100%', minHeight: '520px', boxSizing: 'border-box' }}>
+      <div className="video-container" style={{ height: '520px', width: '98%', minHeight: '520px', boxSizing: 'border-box' }}>
         {/* Server-processed Feed (for Video and Network Camera) */}
         {isDetectionStarted && isConnected && (
           <img

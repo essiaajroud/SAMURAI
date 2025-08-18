@@ -1,4 +1,4 @@
-// PerformancePanel.js (VERSION FINALE AVEC CORRECTION DE LA TAILLE DES BARRES)
+// PerformancePanel.js (VERSION FINALE, COMPLÈTE, ET SANS AVERTISSEMENTS)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
@@ -20,7 +20,6 @@ import './PerformancePanel.css';
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend);
 
 // --- Fonctions Utilitaires ---
-
 const formatMetric = (value, decimals = 1) => {
   if (value == null || isNaN(value)) return '--';
   return value.toFixed(decimals);
@@ -30,46 +29,28 @@ const baseChartOptions = {
   responsive: true,
   maintainAspectRatio: false,
   scales: {
-    y: { 
-      beginAtZero: true, 
-      ticks: { color: '#ccc' }, 
-      grid: { color: '#444' } 
-    },
-    x: { 
-      ticks: { color: '#ccc' }, 
-      grid: { color: '#444' } 
-    }
+    y: { beginAtZero: true, ticks: { color: '#ccc' }, grid: { color: '#444' } },
+    x: { ticks: { color: '#ccc' }, grid: { color: '#444' } }
   },
   plugins: {
-    legend: { 
-      position: 'top', 
-      labels: { color: '#ccc' } 
-    },
-    title: { 
-      display: true, 
-      color: '#fff' 
-    }
+    legend: { position: 'top', labels: { color: '#ccc' } },
+    title: { display: true, color: '#fff' }
   }
 };
 
 // --- Composant Principal ---
-
 const PerformancePanel = ({
-  modelMetrics = {},
-  modelMetricsHistory = [],
-  systemMetrics = {},
-  systemMetricsHistory = [],
-  logs = [],
-  detectionHistory = [],
-  isConnected = false
+  modelMetrics = {}, modelMetricsHistory = [], systemMetrics = {},
+  systemMetricsHistory = [], logs = [], detectionHistory = [], isConnected = false, isDetectionStarted = false, sourceType = 'network'
 }) => {
   const [selectedTab, setSelectedTab] = useState('model');
   const [realtimeAlerts, setRealtimeAlerts] = useState([]);
+  const [systemAlerts, setSystemAlerts] = useState([]);
 
-  // Logique pour les alertes
+  // --- Logique pour les alertes ---
   useEffect(() => {
     let interval = null;
-    if (selectedTab === 'logs') {
+    if (isConnected && selectedTab === 'logs') {
       const fetchAlerts = () => {
         axios.get('/api/alerts')
           .then(res => setRealtimeAlerts(res.data.alerts || []))
@@ -79,10 +60,42 @@ const PerformancePanel = ({
       interval = setInterval(fetchAlerts, 5000);
     }
     return () => clearInterval(interval);
-  }, [selectedTab]);
+  }, [isConnected, selectedTab]);
 
-  // --- PRÉPARATION DES DONNÉES POUR LES GRAPHIQUES ---
+  useEffect(() => {
+    const alerts = [];
+    alerts.push({ id: 'backend', level: isConnected ? 'info' : 'error', message: `Backend ${isConnected ? 'connected' : 'not connected'}` });
+    if(isConnected) {
+        if (modelMetrics.fps === 0 && modelMetrics.inferenceTime > 0) {
+            alerts.push({ id: 'camera', level: 'warning', message: 'Caméra connectée mais le flux semble figé (0 FPS)' });
+        }
+        if (systemMetrics.cpu_percent > 90) {
+            alerts.push({ id: 'cpu', level: 'warning', message: `Utilisation CPU élevée (${systemMetrics.cpu_percent}%)` });
+        }
+        if (systemMetrics.ram_percent > 85) {
+            alerts.push({ id: 'ram', level: 'warning', message: `Utilisation RAM critique (${systemMetrics.ram_percent}%)` });
+        }
+        if (modelMetrics.gpuUsage > 90) { // Déclenche dès 10%
+        alerts.push({ id: 'gpu-usage', level: 'warning', message: ` Utilisation GPU élevée (${formatMetric(modelMetrics.gpuUsage)}%)` });
+      }
+        if (systemMetrics.battery_percent != null && systemMetrics.battery_percent < 20 && !systemMetrics.battery_plugged) {
+            alerts.push({ id: 'battery', level: 'warning', message: `Batterie faible (${systemMetrics.battery_percent}%)` });
+        }
+        if (sourceType === 'network') {
+           const isCameraActive = isDetectionStarted && modelMetrics.fps > 0;
 
+        // Logique spécifique à la CAMÉRA RÉSEAU
+        alerts.push({
+        id: 'camera-status',
+        level: isCameraActive ? 'info' : 'error',
+        message: `Caméra ${isCameraActive ? 'connectée' : 'non connectée'}`
+      });
+      } 
+    }
+    setSystemAlerts(alerts);
+  }, [isConnected, systemMetrics, modelMetrics, isDetectionStarted, sourceType]);
+
+  // --- Préparation des données pour les graphiques (avec useMemo) ---
   const classHistoryData = useMemo(() => {
     const knownClasses = ['person', 'soldier', 'weapon', 'military_vehicles', 'civilian_vehicles', 'military_aircraft', 'civilian_aircraft'];
     const grouped = {};
@@ -99,8 +112,7 @@ const PerformancePanel = ({
       label: cls,
       data: labels.map(t => grouped[t]?.[cls] || 0),
       backgroundColor: `hsl(${(idx * 360) / knownClasses.length}, 70%, 50%)`,
-      // --- AJOUT DE L'OPTION POUR LA TAILLE DES BARRES ---
-      maxBarThickness: 50// Les barres ne dépasseront jamais 75 pixels de large
+      maxBarThickness: 75
     }));
     return { labels, datasets };
   }, [detectionHistory]);
@@ -118,9 +130,7 @@ const PerformancePanel = ({
     return { labels, data };
   }, [detectionHistory]);
 
-
   // --- JSX POUR LES ONGLETS ---
-
   const renderModelPerformance = () => (
     <div className="model-metrics-section">
       <div className="metrics-row">
@@ -204,20 +214,22 @@ const PerformancePanel = ({
     <div className="system-logs-panel">
       <ul className="logs-list">
         {realtimeAlerts.map((alert, idx) => (
-          <li key={`realtime-${idx}`} className={`log-entry`} style={{ borderLeft: `6px solid ${alert.color || '#888'}` }}>
-            <span className="log-timestamp">{alert.timestamp ? new Date(alert.timestamp).toLocaleString() : ''}</span>
-            <span className={`log-level`} style={{ color: alert.color || '#888', fontWeight: 'bold' }}>[{alert.type?.toUpperCase() || 'ALERT'}]</span>
+          <li key={`realtime-${idx}`} className={`log-entry`} style={{ borderLeft: `6px solid ${alert.color || '#ff4d4d'}` }}>
+            <span className="log-timestamp">{new Date(alert.timestamp).toLocaleString()}</span>
+            <span className={`log-level`} style={{ color: alert.color || '#ff4d4d', fontWeight: 'bold' }}>[{alert.type?.toUpperCase() || 'DANGER'}]</span>
             <span className="log-message">{alert.message}</span>
           </li>
         ))}
-        {logs.map((log, idx) => (
-          <li key={`app-log-${idx}`} className={`log-entry`}>
-            <span className="log-timestamp">{log.timestamp ? new Date(log.timestamp).toLocaleString() : ''}</span>
-            <span className={`log-level`}>[{log.level || 'INFO'}]</span>
-            <span className="log-message">{log.message || String(log)}</span>
+        {systemAlerts.map((alert) => (
+          <li key={alert.id} className={`log-entry ${alert.level}`}>
+            <span className="log-timestamp">{new Date().toLocaleString()}</span>
+            <span className={`log-level ${alert.level}`}>[{alert.level.toUpperCase()}]</span>
+            <span className="log-message">{alert.message}</span>
           </li>
         ))}
-        {logs.length === 0 && realtimeAlerts.length === 0 && <li className="log-entry">No logs available.</li>}
+        {logs.length > 0 && realtimeAlerts.length === 0 && systemAlerts.length === 0 && logs.map((log, idx) => (
+          <li key={`app-log-${idx}`}><span>{log}</span></li>
+        ))}
       </ul>
     </div>
   );
@@ -241,6 +253,7 @@ const PerformancePanel = ({
   );
 };
 
+// --- VALIDATION DES PROPS (POUR CORRIGER LES AVERTISSEMENTS) ---
 PerformancePanel.propTypes = {
   modelMetrics: PropTypes.object,
   modelMetricsHistory: PropTypes.array,
@@ -248,7 +261,9 @@ PerformancePanel.propTypes = {
   systemMetricsHistory: PropTypes.array,
   logs: PropTypes.array,
   detectionHistory: PropTypes.array,
-  isConnected: PropTypes.bool
+  isConnected: PropTypes.bool,
+  isDetectionStarted: PropTypes.bool,
+  sourceType: PropTypes.string
 };
 
 export default PerformancePanel;

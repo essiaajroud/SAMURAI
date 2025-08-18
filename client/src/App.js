@@ -112,6 +112,20 @@ function App() {
     } catch (error) { console.error('Error loading videos:', error); }
   }, [isConnected, selectedVideo]);
 
+  const [roverLocation, setRoverLocation] = useState([34.0, 9.0]);
+   const loadRoverLocation = useCallback(async () => {
+    if (!isConnected) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/rover-location`);
+      if (response.ok) {
+        const data = await response.json();
+        setRoverLocation([data.latitude, data.longitude]);
+      }
+    } catch (error) {
+      console.error('Error loading rover location:', error);
+    }
+  }, [isConnected]);
+
   // --- GESTION DES EFFETS SECONDAIRES (useEffect) ---
 
   // Connexion au backend
@@ -128,8 +142,9 @@ function App() {
       loadDetectionHistory();
       loadTrajectoryHistory();
       loadLogs();
+      loadRoverLocation();
     }
-  }, [isConnected, fetchVideos, loadDetectionHistory, loadTrajectoryHistory, loadLogs]);
+  }, [isConnected, fetchVideos, loadDetectionHistory, loadTrajectoryHistory, loadLogs, loadRoverLocation]);
 
   // Intervalles pour les données temps réel
   useEffect(() => {
@@ -193,18 +208,43 @@ function App() {
       <div className="main-content">
         <div className="content-area">
           <div className="camera-section">
-            <CameraView {...{ isPlaying, setIsPlaying, detections: currentDetections, isConnected, systemStatus, videos, selectedVideo, setSelectedVideo, isDetectionStarted, onStartStopDetection: handleStartStopDetection, sourceType, setSourceType, networkUrl, setNetworkUrl }} />
+            <CameraView
+                  isPlaying={isPlaying}
+                  setIsPlaying={setIsPlaying} // <- Il est probable que cette prop soit aussi nécessaire
+                  onPause={() => setIsPlaying(false)} // <--- C'EST LA PROP QUI A ÉTÉ AJOUTÉE
+                  detections={currentDetections}
+                  isConnected={isConnected}
+                  systemStatus={systemStatus}
+                  videos={videos}
+                  selectedVideo={selectedVideo}
+                  setSelectedVideo={setSelectedVideo}
+                  isDetectionStarted={isDetectionStarted}
+                  onStartStopDetection={handleStartStopDetection}
+                  sourceType={sourceType}
+                  setSourceType={setSourceType}
+                  networkUrl={networkUrl}
+                  setNetworkUrl={setNetworkUrl}
+                />
           </div>
           <div className="right-panel">
             <DetectionPanel {...{ detections: currentDetections, detectionHistory, trajectoryHistory, isConnected }} />
           </div>
         </div>
         <div className="map-section">
-          <TrackingMap {...{ detections: currentDetections, trajectoryHistory, isConnected, mapCenter: [34.0, 9.0], zoomLevel: 7 }} />
+          <TrackingMap
+            detections={currentDetections}
+            trajectoryHistory={trajectoryHistory}
+            isConnected={isConnected}
+            mapCenter={roverLocation} // <--- UTILISER L'ÉTAT DYNAMIQUE
+            zoomLevel={7}
+          />
         </div>
       </div>
       <div className="bottom-panel">
-        <PerformancePanel {...{ modelMetrics: performanceData, modelMetricsHistory, systemMetrics: generalSystemMetrics, systemMetricsHistory, logs, detectionHistory, isConnected }} />
+        <PerformancePanel {...{ modelMetrics: performanceData, modelMetricsHistory, systemMetrics: generalSystemMetrics, systemMetricsHistory, logs, detectionHistory, isConnected }} 
+        isConnected={isConnected}
+        isDetectionStarted={isDetectionStarted}
+        sourceType={sourceType}/>
       </div>
     </div>
   );

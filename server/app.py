@@ -21,12 +21,25 @@ import psutil
 import random
 import osmnx as ox
 import shapely.geometry
+import logging
+from logging.handlers import RotatingFileHandler
+from alert_manager import alert_manager
+
 #from config import ENABLE_LOGS
 from config import get_config
 config = get_config()
 ENABLE_LOGS = config.ENABLE_LOGS
 
+app = Flask(__name__)
 
+if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+    file_handler = RotatingFileHandler('server.log', maxBytes=1024 * 1024 * 10, backupCount=5, encoding='utf-8')
+    file_handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    app.logger.addHandler(file_handler)
+    app.logger.setLevel(logging.INFO)
+    app.logger.info('SAMURAI Server startup')
 # Configuration pour les logs
 #ENABLE_LOGS = True  # Active l'affichage des logs pour le diagnostic
 
@@ -38,19 +51,19 @@ try:
     from yolo_detector import detector
     YOLO_AVAILABLE = detector.model is not None
     if YOLO_AVAILABLE and ENABLE_LOGS:
-        print("✅ YOLO detector loaded successfully.")
+        app.logger.info("✅ YOLO detector loaded successfully.")
     else:
         if ENABLE_LOGS:
-            print("⚠️ YOLO detector failed to load a model. YOLO features will be disabled.")
+            app.logger.warning("⚠️ YOLO detector failed to load a model. YOLO features will be disabled.")
 except ImportError as e:
     if ENABLE_LOGS:
-        print(f"⚠️ YOLO detector could not be imported: {e}")
-        print("   YOLO features will be disabled.")
+        app.logger.warning(f"⚠️ YOLO detector could not be imported: {e}")
+        app.logger.warning("   YOLO features will be disabled.")
     YOLO_AVAILABLE = False
     detector = None
 except Exception as e:
     if ENABLE_LOGS:
-        print(f"❌ An unexpected error occurred while loading the YOLO detector: {e}")
+        app.logger.error(f"❌ An unexpected error occurred while loading the YOLO detector: {e}")
     YOLO_AVAILABLE = False
     detector = None
 # --- Flask App Initialization ---
@@ -170,6 +183,10 @@ def save_yolo_detection(detection_data):
             )
             db.session.add(trajectory_point)
             db.session.commit()
+            if 'latitude' in detection_data and 'longitude' in detection_data:
+                location = (detection_data['latitude'], detection_data['longitude'])
+                # L'AlertManager vérifie si cette détection est une menace
+                alert_manager.check_threat(detection_data, location)
             # Debug log (désactivé)
             if ENABLE_LOGS:
                 print(f"✅ Detection saved: {detection_data['label']} (conf: {detection_data['confidence']:.2f}) at ({detection_data['x']:.1f}, {detection_data['y']:.1f})")
@@ -251,46 +268,94 @@ def save_detection():
 
 @app.route('/api/detections', methods=['GET'])
 def get_detections():
-    """Retrieve detections with filters."""
+    """
+    Retrieve historical detections with filters.
+    Assigns stable fake GPS coordinates to objects for consistent trajectories.
+    """
     try:
-        # Filter parameters
+        # 1. Récupérer les paramètres de filtrage de la requête
         time_range = request.args.get('timeRange', '24h')
-        confidence_threshold = float(request.args.get('confidence', 0.0))
+        try:
+            confidence_threshold = float(request.args.get('confidence', 0.0))
+        except (ValueError, TypeError):
+            confidence_threshold = 0.0
+            
         selected_class = request.args.get('class', 'all')
-        limit = int(request.args.get('limit', 100))
         
-        # Calculate time limit
+        try:
+            limit = int(request.args.get('limit', 1000))
+        except (ValueError, TypeError):
+            limit = 1000
+
+        # 2. Calculer la fenêtre de temps basée sur le paramètre 'timeRange'
         now = datetime.now(timezone.utc)
         if time_range == '1h':
             time_limit = now - timedelta(hours=1)
         elif time_range == '6h':
             time_limit = now - timedelta(hours=6)
-        else:  # 24h by default
+        else:  # '24h' par défaut
             time_limit = now - timedelta(hours=24)
-        
-        # Build query
-        query = Detection.query.filter(Detection.timestamp >= time_limit)
-        
+
+        # 3. Construire la requête vers la base de données avec les filtres
+        query = db.session.query(Detection).filter(Detection.timestamp >= time_limit)
+
         if confidence_threshold > 0:
             query = query.filter(Detection.confidence >= confidence_threshold)
-        
+
         if selected_class != 'all':
             query = query.filter(Detection.label == selected_class)
-        
-        # Get detections
+
+        # 4. Exécuter la requête
         detections = query.order_by(Detection.timestamp.desc()).limit(limit).all()
-        
-        return jsonify([detection.to_dict() for detection in detections])
-        
+
+        # 5. Convertir les résultats en dictionnaires et assigner les positions GPS
+        result_list = []
+        base_lat, base_lon = 34.0, 9.0  # Point de base en Tunisie
+
+        for detection in detections:
+            detection_dict = detection.to_dict()
+            object_id = detection_dict.get('id')
+
+            if object_id is not None:
+                # Si l'objet n'est pas encore dans le cache, on lui crée une position de départ
+                if object_id not in fake_gps_positions_cache:
+                    # Dans l'historique, on ne met pas à jour, on crée juste s'il n'existe pas
+                    new_lat = base_lat + np.random.uniform(-0.05, 0.05)
+                    new_lon = base_lon + np.random.uniform(-0.05, 0.05)
+                    
+                    # --- START OF CORRECTION ---
+                    # For history, initialize the complete state to be compatible with /current
+                    heading = np.random.uniform(0, 360)
+                    speed = np.random.uniform(0.0001, 0.0005)
+                    fake_gps_positions_cache[object_id] = {
+                        'lat': new_lat,
+                        'lon': new_lon,
+                        'heading': heading,
+                        'speed': speed
+                    }
+                    # --- END OF CORRECTION ---
+
+                # On récupère la position stable depuis le cache
+                cached_position = fake_gps_positions_cache[object_id]
+                detection_dict['latitude'] = cached_position['lat']
+                detection_dict['longitude'] = cached_position['lon']
+            
+            result_list.append(detection_dict)
+
+        # 6. Renvoyer la liste des détections enrichies
+        return jsonify(result_list)
+
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        app.logger.error(f"Error in /api/detections: {e}")
+        return jsonify({'error': str(e)}), 500
+    
 
 @app.route('/api/trajectories', methods=['GET'])
 def get_trajectories():
     """Retrieve trajectories with their points."""
     try:
         trajectories = Trajectory.query.all()
-        result = []
+        result_object = {}
         
         for trajectory in trajectories:
             trajectory_data = trajectory.to_dict()
@@ -327,12 +392,13 @@ def get_trajectories():
                 trajectory_data['avgSpeed'] = total_distance / duration if duration > 0 else 0
                 trajectory_data['pointCount'] = len(points)
             
-            result.append(trajectory_data)
+            result_object[trajectory.object_id] = trajectory_data
         
-        return jsonify(result)
+        return jsonify(result_object)
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        app.logger.error(f"Error in /api/trajectories: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/statistics', methods=['GET'])
 def get_statistics():
@@ -987,24 +1053,62 @@ def get_realtime_statistics():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+    
+@app.route('/api/rover-location', methods=['GET'])
+def get_rover_location():
+    """Renvoie la position actuelle (factice) du rover."""
+    # Dans une vraie application, ces données viendraient d'un tracker GPS.
+    # Pour la démo, nous renvoyons une position fixe en Tunisie.
+    return jsonify({
+        'latitude': 34.0,
+        'longitude': 9.0
+    })
+
+# Clé: object_id, Valeur: { 'lat': float, 'lon': float, 'heading': float, 'speed': float }
+fake_gps_positions_cache = {}
+
+# --- FONCTION UTILITAIRE POUR METTRE À JOUR LA POSITION ---
+def update_fake_position(object_id, base_lat, base_lon):
+    """Met à jour ou crée la position d'un objet dans le cache."""
+    if object_id not in fake_gps_positions_cache:
+        # Création initiale
+        new_lat = base_lat + np.random.uniform(-0.05, 0.05)
+        new_lon = base_lon + np.random.uniform(-0.05, 0.05)
+        heading = np.random.uniform(0, 360) # Direction aléatoire en degrés
+        speed = np.random.uniform(0.0001, 0.0005) # Vitesse aléatoire en degrés/appel
+        fake_gps_positions_cache[object_id] = {
+            'lat': new_lat, 'lon': new_lon, 'heading': heading, 'speed': speed
+        }
+    else:
+        # Mise à jour du mouvement
+        obj = fake_gps_positions_cache[object_id]
+        
+        # Le cap (heading) change légèrement à chaque fois
+        obj['heading'] += np.random.uniform(-15, 15) # Change de direction de +/- 15 degrés
+        
+        # Conversion du cap en vecteur de mouvement
+        rad = np.deg2rad(obj['heading'])
+        obj['lat'] += obj['speed'] * np.sin(rad)
+        obj['lon'] += obj['speed'] * np.cos(rad)
+        
+        # Garder une petite variation de vitesse
+        obj['speed'] *= np.random.uniform(0.95, 1.05)
+
+    return fake_gps_positions_cache[object_id]
 
 @app.route('/api/detections/current', methods=['GET'])
 def get_current_detections():
     """
-    Returns the most recent detections for each object (by object_id).
-    Dynamic with real-time filtering.
+    Returns the most recent detections for each unique object,
+    with updated fake GPS coordinates for map demonstration.
     """
     try:
-        # Dynamic filtering parameters
-        limit = int(request.args.get('limit', 30))  # Augmenter la limite pour plus de détections
-        confidence_threshold = float(request.args.get('confidence', 0.0))
-        time_window = int(request.args.get('time_window', 10))  # Augmenter la fenêtre de temps
-        
-        # Calculate time window
+        limit = int(request.args.get('limit', 50))
+        time_window_seconds = int(request.args.get('time_window', 15))
+
         now = datetime.now(timezone.utc)
-        time_limit = now - timedelta(seconds=time_window)
-        
-        # For each object_id, take the most recent detection in the time window
+        time_limit = now - timedelta(seconds=time_window_seconds)
+
         subquery = (
             db.session.query(
                 Detection.object_id,
@@ -1019,49 +1123,34 @@ def get_current_detections():
             db.session.query(Detection)
             .join(subquery, (Detection.object_id == subquery.c.object_id) & (Detection.timestamp == subquery.c.max_timestamp))
         )
-        
-        # Apply filters
-        if confidence_threshold > 0:
-            query = query.filter(Detection.confidence >= confidence_threshold)
-        
-        # Limit results
+
         detections = query.order_by(Detection.timestamp.desc()).limit(limit).all()
-
-        # Adapt timestamp format for frontend (in ms since epoch)
-        def detection_to_dict_with_epoch(d):
-            dct = d.to_dict()
-            try:
-                dt = d.timestamp
-                if isinstance(dt, str):
-                    dt = datetime.fromisoformat(dt)
-                dct['timestamp'] = int(dt.timestamp() * 1000)
-                # Add dynamic metadata
-                dct['age_seconds'] = (now - dt).total_seconds()
-                dct['is_recent'] = dct['age_seconds'] <= 2  # Recent detection (< 2 seconds)
-            except Exception:
-                dct['timestamp'] = 0
-                dct['age_seconds'] = 0
-                dct['is_recent'] = False
-            return dct
-
-        result = [detection_to_dict_with_epoch(d) for d in detections]
+        result_list = [d.to_dict() for d in detections]
         
-        # Add metadata about the query
+        base_lat, base_lon = 34.0, 9.0
+
+        for detection_dict in result_list:
+            object_id = detection_dict.get('id')
+            if object_id is not None:
+                position_state = update_fake_position(object_id, base_lat, base_lon)
+                detection_dict['latitude'] = position_state['lat']
+                detection_dict['longitude'] = position_state['lon']
+
+        # --- CORRECTION DE LA LIGNE D'ERREUR ---
+        # Le metadata est maintenant correctement rempli.
         response_data = {
-            'detections': result,
+            'detections': result_list,
             'metadata': {
-                'total_detections': len(result),
-                'time_window_seconds': time_window,
-                'confidence_threshold': confidence_threshold,
+                'total_detections': len(result_list),
                 'query_timestamp': now.isoformat(),
-                'is_dynamic': True
             }
         }
-        
         return jsonify(response_data)
-        
+
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        app.logger.error(f"Error in /api/detections/current: {e}")
+        return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/alerts', methods=['GET'])
 def api_alerts():

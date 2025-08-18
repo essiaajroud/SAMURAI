@@ -23,27 +23,39 @@ function useDetectionFilters(detections, detectionHistory, confidenceThreshold, 
     }),
     [detectionsArray, selectedClass, confidenceThreshold]
   );
-  // Calculate time range in ms
-  const timeRangeMs = useMemo(() => {
-    switch (timeRange) {
-      case '1h': return 60 * 60 * 1000;
-      case '6h': return 6 * 60 * 60 * 1000;
-      case '24h': return 24 * 60 * 60 * 1000;
-      default: return 60 * 60 * 1000;
-    }
-  }, [timeRange]);
+  
   // Filter detection history by time, class, and confidence
   const filteredHistory = useMemo(() => {
+    const now = Date.now();
+    let timeLimit = now;
+    
+    switch(timeRange) {
+      case '1h':
+        timeLimit = now - (60 * 60 * 1000);
+        break;
+      case '6h':
+        timeLimit = now - (6 * 60 * 60 * 1000);
+        break;
+      case '24h':
+        timeLimit = now - (24 * 60 * 60 * 1000);
+        break;
+      default:
+        timeLimit = 0;
+    }
+
     return detectionHistory.filter(detection => {
+      // Assurer que le timestamp est converti en nombre
       const timestampMs = typeof detection.timestamp === 'string' 
         ? new Date(detection.timestamp).getTime() 
         : detection.timestamp;
-      const isInTimeRange = Date.now() - timestampMs < timeRangeMs;
+        
+      const isInTimeRange = timestampMs >= timeLimit;
       const matchesClass = selectedClass === 'all' || detection.label === selectedClass;
       const matchesConfidence = detection.confidence >= confidenceThreshold;
+
       return isInTimeRange && matchesClass && matchesConfidence;
     });
-  }, [detectionHistory, selectedClass, confidenceThreshold, timeRangeMs]);
+  }, [detectionHistory, selectedClass, confidenceThreshold, timeRange]);
   return { uniqueClasses, filteredCurrentDetections, filteredHistory };
 }
 
@@ -125,7 +137,7 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], trajectoryHist
 
   // --- Render ---
   return (
-    <div className="detection-panel" style={{ height: '520px', overflow: 'auto', boxSizing: 'border-box' }}>
+    <div className="detection-panel" style={{ height: '622px', overflow: 'auto', boxSizing: 'border-box' }}>
       {/* Panel header with export and filters */}
       <div className="panel-header">
         <div className="header-top">
@@ -218,16 +230,20 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], trajectoryHist
             <table>
               <thead>
                 <tr>
-                  <th>Object</th>
-                  <th>Confidence</th>
-                  <th>Position</th>
+                  <th>🎯 Object</th>
+                  <th>📊 Confidence</th>
+                  <th>📍 Position (x, y)</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredCurrentDetections.map((detection, index) => (
-                  <tr key={index}>
-                    <td>{detection.label}</td>
-                    <td>{(detection.confidence * 100).toFixed(1)}%</td>
+                  <tr key={index} className={detection.confidence >= 0.8 ? 'high-confidence' : detection.confidence >= 0.6 ? 'medium-confidence' : 'low-confidence'}>
+                    <td><strong>{detection.label}</strong></td>
+                    <td>
+                      <span className={`confidence-badge ${detection.confidence >= 0.8 ? 'high' : detection.confidence >= 0.6 ? 'medium' : 'low'}`}>
+                        {(detection.confidence * 100).toFixed(1)}%
+                      </span>
+                    </td>
                     <td>({detection.x.toFixed(0)}, {detection.y.toFixed(0)})</td>
                   </tr>
                 ))}
@@ -286,29 +302,28 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], trajectoryHist
           </div>
         )}
         {activeTab === 'trajectories' && (
-          <div className="trajectories-table">
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Label</th>
-              <th>Durée de vie (s)</th>
-              <th>Distance caméra-objet</th>
-            </tr>
-          </thead>
-          <tbody>
-            {trajectoryAnalysis.map((traj, index) => (
-              <tr key={index}>
-                <td>{traj.id}</td>
-                <td>{traj.label}</td>
-                <td>{(traj.duration / 1000).toFixed(1)}</td>
-                <td>{traj.totalDistance ? traj.totalDistance.toFixed(1) + ' m' : '--'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
+          <div className="detections-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>🔍 ID</th>
+                  <th>🎯 Label</th>
+                  <th>⏱️ Durée de vie (s)</th>
+                  <th>📏 Distance Rover-objet</th>
+                </tr>
+              </thead>
+              <tbody>
+                {trajectoryAnalysis.map((traj, index) => (
+                  <tr key={index}>
+                    <td>{traj.id}</td>
+                    <td><strong>{traj.label}</strong></td>
+                    <td>{(traj.duration / 1000).toFixed(1)}</td>
+                    <td>{traj.totalDistance ? traj.totalDistance.toFixed(1) : '--'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
