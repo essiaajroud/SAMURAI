@@ -36,8 +36,9 @@ class Config:
 
     # Streaming configuration
     STREAM_FPS = 30
-    STREAM_FRAME_DELAY = 0.033  # ~30 FPS
-
+    STREAM_FRAME_DELAY = 1.0 / STREAM_FPS
+    
+    
     # Time windows for statistics
     TIME_WINDOWS = {
         'last_second': timedelta(seconds=1),

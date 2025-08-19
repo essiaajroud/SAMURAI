@@ -2,10 +2,20 @@ import serial
 import threading
 import time
 from typing import Optional, Tuple, Callable
+import platform # <-- AJOUT : Pour détecter le système d'exploitation
 
 class GPSTracker:
-    def __init__(self, port: str = "COM3"):
-        self.port = port
+    def __init__(self, port: str = None):
+        # --- MODIFICATION : Rendre le port optionnel et plus intelligent ---
+        if port is None:
+            # Définir un port par défaut en fonction de l'OS
+            if platform.system() == "Windows":
+                self.port = "COM3"
+            else: # Pour Linux/macOS
+                self.port = "/dev/ttyUSB0"
+        else:
+            self.port = port
+        
         self.current_position: Optional[Tuple[float, float]] = None
         self.running = False
         self.position_callbacks = []
@@ -20,7 +30,9 @@ class GPSTracker:
     def _read_gps(self):
         """Lire les données GPS en continu"""
         try:
+            # Le 'with' gère l'ouverture et la fermeture du port
             with serial.Serial(self.port, 9600, timeout=1) as ser:
+                print(f"✅ GPS port {self.port} opened successfully.")
                 while self.running:
                     line = ser.readline().decode('ascii', errors='replace')
                     if line.startswith('$GPGGA'):
@@ -28,18 +40,35 @@ class GPSTracker:
                         if position:
                             self.current_position = position
                             self._notify_position()
+        except serial.SerialException as e:
+            # Gère spécifiquement l'erreur d'ouverture de port
+            print(f"❌ GPS ERROR: Could not open port '{self.port}'. Is the device connected? Error: {e}")
         except Exception as e:
-            print(f"Erreur GPS: {e}")
+            # Gère les autres erreurs potentielles
+            print(f"❌ An unexpected GPS error occurred: {e}")
             
     def _parse_gpgga(self, nmea: str) -> Optional[Tuple[float, float]]:
         """Parser une ligne NMEA GPGGA"""
         try:
             parts = nmea.split(',')
-            latitude = float(parts[2]) / 100.0
-            longitude = float(parts[4]) / 100.0
+            # Convertir de DDMM.MMMM en degrés décimaux
+            lat_raw = float(parts[2])
+            lat_deg = int(lat_raw / 100)
+            lat_min = lat_raw - lat_deg * 100
+            latitude = lat_deg + lat_min / 60
+            if parts[3] == 'S':
+                latitude = -latitude
+
+            lon_raw = float(parts[4])
+            lon_deg = int(lon_raw / 100)
+            lon_min = lon_raw - lon_deg * 100
+            longitude = lon_deg + lon_min / 60
+            if parts[5] == 'W':
+                longitude = -longitude
+            
             return (latitude, longitude)
-        except Exception as e:
-            print(f"Erreur de parsing GPS: {e}")
+        except (ValueError, IndexError):
+            # Ignore les trames GPGGA mal formées ou incomplètes
             return None
 
     def _notify_position(self):
@@ -56,19 +85,3 @@ class GPSTracker:
         self.running = False
         if hasattr(self, 'thread'):
             self.thread.join()
-
-# Exemple d'utilisation
-if __name__ == "__main__":
-    def position_callback(position):
-        print(f"Position actuelle: {position}")
-
-    gps_tracker = GPSTracker()
-    gps_tracker.add_position_callback(position_callback)
-    gps_tracker.start()
-
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        gps_tracker.stop()
-        print("Suivi GPS arrêté.")

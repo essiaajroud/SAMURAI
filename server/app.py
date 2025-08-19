@@ -24,6 +24,9 @@ import shapely.geometry
 import logging
 from logging.handlers import RotatingFileHandler
 from alert_manager import alert_manager
+from geolocation import calculate_object_gps
+from camera_location import CameraLocationManager
+
 
 #from config import ENABLE_LOGS
 from config import get_config
@@ -43,12 +46,16 @@ if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
 # Configuration pour les logs
 #ENABLE_LOGS = True  # Active l'affichage des logs pour le diagnostic
 
+camera_location_manager = CameraLocationManager(socketio=None)
+camera_location_manager.update_position(lat=35.72, lon=10.58)
+
 # Cache des polygones OSM
 zone_polygons = {'military': []}
 
 # --- YOLO Detector Initialization ---
 try:
-    from yolo_detector import detector
+    from yolo_detector import detector, YOLODetector
+    detector = YOLODetector(app=app, location_manager=camera_location_manager)
     YOLO_AVAILABLE = detector.model is not None
     if YOLO_AVAILABLE and ENABLE_LOGS:
         app.logger.info("✅ YOLO detector loaded successfully.")
@@ -66,8 +73,7 @@ except Exception as e:
         app.logger.error(f"❌ An unexpected error occurred while loading the YOLO detector: {e}")
     YOLO_AVAILABLE = False
     detector = None
-# --- Flask App Initialization ---
-app = Flask(__name__)
+
 
 # --- App Configuration ---
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///detection_history.db'
@@ -141,13 +147,39 @@ class TrajectoryPoint(db.Model):
 
 # --- YOLO Detection Callback ---
 def save_yolo_detection(detection_data):
-    """Save a YOLO detection to the database dynamically."""
-    try:
-        with app.app_context():
-            # Compute speed and distance if available
+    """
+    Sauvegarde une détection YOLO, calcule sa position GPS réelle si possible,
+    et met à jour la base de données.
+    """
+    # Toute la logique doit être dans le contexte de l'application pour l'accès à la DB
+    with app.app_context():
+        try:
+            object_id = detection_data.get('id')
+            if object_id is not None and camera_location_manager.current_position:
+                rover_pos = camera_location_manager.current_position
+                rover_heading = 90  # Simulation du cap, à remplacer par une vraie donnée
+                frame_width = detection_data.get('frame_width', 640) # Utilise la largeur de frame si elle existe
+
+                # Appel de la fonction de géolocalisation
+                lat, lon = calculate_object_gps(
+                    rover_lat=rover_pos.latitude,
+                    rover_lon=rover_pos.longitude,
+                    rover_heading=rover_heading,
+                    detection_x=detection_data['x'],
+                    frame_width=frame_width,
+                    distance=detection_data.get('distance', 10) # distance par défaut
+                )
+
+                # Ajouter les coordonnées au dictionnaire pour la logique d'alerte
+                if lat is not None:
+                    detection_data['latitude'] = lat
+                    detection_data['longitude'] = lon
+            # --- FIN DE L'AJOUT ---
+
+            # Le reste du code est identique à votre version fonctionnelle
             speed = detection_data.get('speed')
             distance = detection_data.get('distance')
-            # Create detection
+            
             detection = Detection(
                 object_id=detection_data['id'],
                 label=detection_data['label'],
@@ -156,24 +188,22 @@ def save_yolo_detection(detection_data):
                 y=detection_data['y'],
                 speed=speed,
                 distance=distance,
-                history_id=f"yolo_{uuid.uuid4()}_{detection_data.get('frame_number', 0)}"
+                history_id=f"yolo_{uuid.uuid4()}" # UUID simple pour éviter les erreurs
             )
             db.session.add(detection)
-            # Update or create trajectory dynamically
+
             trajectory = Trajectory.query.filter_by(object_id=detection_data['id']).first()
             if trajectory:
-                # Update existing trajectory
                 trajectory.last_seen = datetime.now(timezone.utc)
                 trajectory.is_active = True
             else:
-                # Create new trajectory
                 trajectory = Trajectory(
                     object_id=detection_data['id'],
                     label=detection_data['label']
                 )
                 db.session.add(trajectory)
-                db.session.flush()  # To get trajectory ID
-            # Add trajectory point
+                db.session.flush()
+
             trajectory_point = TrajectoryPoint(
                 trajectory_id=trajectory.id,
                 x=detection_data['x'],
@@ -182,18 +212,21 @@ def save_yolo_detection(detection_data):
                 distance=distance
             )
             db.session.add(trajectory_point)
+            
             db.session.commit()
+
             if 'latitude' in detection_data and 'longitude' in detection_data:
                 location = (detection_data['latitude'], detection_data['longitude'])
-                # L'AlertManager vérifie si cette détection est une menace
                 alert_manager.check_threat(detection_data, location)
-            # Debug log (désactivé)
+
             if ENABLE_LOGS:
-                print(f"✅ Detection saved: {detection_data['label']} (conf: {detection_data['confidence']:.2f}) at ({detection_data['x']:.1f}, {detection_data['y']:.1f})")
-    except Exception as e:
-        if ENABLE_LOGS:
-            print(f"❌ Error saving detection: {e}")
-        db.session.rollback()
+                gps_log = f"with real GPS ({detection_data.get('latitude', 0):.4f}, {detection_data.get('longitude', 0):.4f})" if 'latitude' in detection_data else "(no GPS)"
+                print(f"✅ Detection saved: {detection_data['label']} (ID: {object_id}) {gps_log}")
+
+        except Exception as e:
+            if ENABLE_LOGS:
+                print(f"❌ Error in save_yolo_detection: {e}")
+            db.session.rollback()
 
 def load_osm_zones(center_lat, center_lon, dist_m=3000):
     # Télécharge les polygones de zones militaires autour du rover
@@ -310,7 +343,7 @@ def get_detections():
 
         # 5. Convertir les résultats en dictionnaires et assigner les positions GPS
         result_list = []
-        base_lat, base_lon = 34.0, 9.0  # Point de base en Tunisie
+        base_lat, base_lon = 35.72, 10.58  # Point de base en Tunisie
 
         for detection in detections:
             detection_dict = detection.to_dict()
@@ -568,6 +601,56 @@ def export_data():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+    
+@app.route('/api/export/daily', methods=['POST'])
+def export_daily_data():
+    """
+    Exporte automatiquement les données des dernières 24 heures.
+    """
+    try:
+        now = datetime.now(timezone.utc)
+        start_time = now - timedelta(hours=24)
+        
+        # Récupérer les données des dernières 24 heures
+        detections = Detection.query.filter(Detection.timestamp >= start_time).all()
+        # On pourrait aussi filtrer les trajectoires, mais on les garde pour le contexte
+        trajectories = Trajectory.query.all() 
+        
+        if not detections:
+            return jsonify({'message': 'No new detections in the last 24 hours to export.'}), 200
+
+        export_data_content = {
+            'exportDate': now.isoformat(),
+            'timeRange': {'start': start_time.isoformat(), 'end': now.isoformat()},
+            'detectionHistory': [d.to_dict() for d in detections],
+            'trajectoryHistory': {}
+        }
+
+        for trajectory in trajectories:
+            points = TrajectoryPoint.query.filter(
+                TrajectoryPoint.trajectory_id == trajectory.id,
+                TrajectoryPoint.timestamp >= start_time
+            ).all()
+            if points: # N'inclure que les trajectoires avec des points récents
+                t_data = trajectory.to_dict()
+                t_data['points'] = [p.to_dict() for p in points]
+                export_data_content['trajectoryHistory'][trajectory.object_id] = t_data
+
+        filename = f"daily_export_{now.strftime('%Y%m%d')}.json"
+        filepath = os.path.join('exports', filename)
+        os.makedirs('exports', exist_ok=True)
+        
+        with open(filepath, 'w') as f:
+            json.dump(export_data_content, f, indent=2)
+        
+        return jsonify({
+            'message': f'Daily export completed successfully to {filename}',
+            'detectionCount': len(detections)
+        }), 200
+        
+    except Exception as e:
+        app.logger.error(f"Error during daily export: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -855,18 +938,21 @@ def video_feed():
         mimetype='multipart/x-mixed-replace; boundary=frame'
     )
 
-# Create tables on startup
-with app.app_context():
-    db.create_all()
-
 @app.route('/api/logs', methods=['GET'])
 def get_logs():
     try:
-        with open('server.log', 'r') as f:
+        # Check if the log file exists before trying to open it
+        if not os.path.exists('server.log'):
+            return jsonify({'logs': ['Log file not yet created.']})
+
+        with open('server.log', 'r', encoding='utf-8') as f:
             lines = f.readlines()[-100:]
         return jsonify({'logs': lines})
     except Exception as e:
+        # Log the error for debugging purposes
+        app.logger.error(f"Error reading log file: {e}")
         return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/performance', methods=['GET'])
 def get_performance():
@@ -1060,9 +1146,52 @@ def get_rover_location():
     # Dans une vraie application, ces données viendraient d'un tracker GPS.
     # Pour la démo, nous renvoyons une position fixe en Tunisie.
     return jsonify({
-        'latitude': 34.0,
-        'longitude': 9.0
+        'latitude': 35.72,
+        'longitude': 10.58
     })
+
+@app.route('/api/update_rover_location', methods=['POST'])
+def update_rover_location():
+    """
+    Endpoint pour que le téléphone/rover mette à jour sa position GPS,
+    avec des logs de débogage détaillés.
+    """
+    try:
+        # --- DÉBUT DES AJOUTS POUR LE DÉBOGAGE ---
+        if ENABLE_LOGS:
+            app.logger.info("--- Received request for /api/update_rover_location ---")
+            app.logger.info(f"Request Headers: {request.headers}")
+            raw_data = request.get_data(as_text=True)
+            app.logger.info(f"Raw Request Body: {raw_data}")
+        # --- FIN DES AJOUTS POUR LE DÉBOGAGE ---
+
+        data = request.get_json() # Tente de parser le JSON
+        
+        if not data or 'latitude' not in data or 'longitude' not in data:
+            error_msg = f"Invalid or missing JSON payload. Received: {raw_data}"
+            app.logger.error(error_msg)
+            return jsonify({'error': error_msg}), 400
+        
+        lat = float(data['latitude'])
+        lon = float(data['longitude'])
+        
+        camera_location_manager.update_position(lat=lat, lon=lon)
+        
+        if ENABLE_LOGS:
+            app.logger.info(f"🛰️ Rover position updated via API: ({lat}, {lon})")
+            
+        return jsonify({'message': 'Location updated successfully.'}), 200
+        
+    except json.JSONDecodeError:
+        raw_data = request.get_data(as_text=True)
+        error_msg = f"Failed to decode JSON. The received data is not in a valid JSON format. Raw data: {raw_data}"
+        app.logger.error(error_msg)
+        return jsonify({'error': error_msg}), 400
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Invalid latitude or longitude format. Make sure they are numbers.'}), 400
+    except Exception as e:
+        app.logger.error(f"Error updating rover location: {e}")
+        return jsonify({'error': 'An internal error occurred.'}), 500
 
 # Clé: object_id, Valeur: { 'lat': float, 'lon': float, 'heading': float, 'speed': float }
 fake_gps_positions_cache = {}
@@ -1223,6 +1352,9 @@ def api_alerts():
                 'color': 'orange'
             })
     return jsonify({'alerts': alerts})
+
+with app.app_context():
+    db.create_all()
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

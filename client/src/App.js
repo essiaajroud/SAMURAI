@@ -210,8 +210,8 @@ function App() {
           <div className="camera-section">
             <CameraView
                   isPlaying={isPlaying}
-                  setIsPlaying={setIsPlaying} // <- Il est probable que cette prop soit aussi nécessaire
-                  onPause={() => setIsPlaying(false)} // <--- C'EST LA PROP QUI A ÉTÉ AJOUTÉE
+                  setIsPlaying={setIsPlaying} 
+                  onPause={() => setIsPlaying(false)} 
                   detections={currentDetections}
                   isConnected={isConnected}
                   systemStatus={systemStatus}

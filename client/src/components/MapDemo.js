@@ -1,112 +1,78 @@
-import React, { useState, useEffect } from 'react';
+import {React, useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import TrackingMap from './TrackingMap';
-import { generateTestDetections, generateTestTrajectories } from '../utils/mapUtils';
 import axios from 'axios';
 import './MapDemo.css';
 
-const MapDemo = () => {
-  const [demoDetections, setDemoDetections] = useState([]);
-  const [demoTrajectories, setDemoTrajectories] = useState({});
-  const [isDemoRunning, setIsDemoRunning] = useState(false);
-  const [demoInterval, setDemoInterval] = useState(null);
-  const [cameraLocation, setCameraLocation] = useState([48.8566, 2.3522]); // Default Paris
+// Ce composant n'est plus une démo, mais la vue principale de la carte en direct.
+const LiveTrackingView = ({ isConnected }) => {
+  // --- ÉTATS POUR LES DONNÉES EN DIRECT ---
+  const [liveDetections, setLiveDetections] = useState([]);
+  const [liveTrajectories, setLiveTrajectories] = useState({});
   const [alerts, setAlerts] = useState([]);
+  
+  // --- CORRECTION : Démarrer la carte directement en Tunisie ---
+  const [roverLocation, setRoverLocation] = useState([35.72, 10.58]); // Default Tunisie
 
-  // Fetch camera GPS location from backend
-  useEffect(() => {
-    axios.get('/api/camera-location')
-      .then(res => {
-        if (res.data && res.data.latitude && res.data.longitude) {
-          setCameraLocation([res.data.latitude, res.data.longitude]);
-        }
-      })
-      .catch(() => {});
-  }, []);
+  // --- RÉCUPÉRATION DES DONNÉES EN DIRECT DE L'API ---
 
-  // Fetch real-time alerts from backend every 5s
+  // 1. Récupérer la position du rover (une fois au début, puis pourrait être mis à jour par WebSocket)
   useEffect(() => {
-    const fetchAlerts = () => {
+    if (isConnected) {
+      axios.get('/api/rover-location')
+        .then(res => {
+          if (res.data && res.data.latitude && res.data.longitude) {
+            setRoverLocation([res.data.latitude, res.data.longitude]);
+          }
+        })
+        .catch(err => console.error("Failed to fetch rover location:", err));
+    }
+  }, [isConnected]);
+
+  // 2. Récupérer les détections actuelles, les trajectoires et les alertes toutes les 2 secondes
+  useEffect(() => {
+    if (!isConnected) return; // Ne rien faire si le backend n'est pas connecté
+
+    const fetchData = () => {
+      // Détections actuelles
+      axios.get('/api/detections/current')
+        .then(res => setLiveDetections(res.data.detections || []))
+        .catch(err => console.error("Failed to fetch current detections:", err));
+
+      // Trajectoires complètes
+      axios.get('/api/trajectories')
+        .then(res => setLiveTrajectories(res.data || {}))
+        .catch(err => console.error("Failed to fetch trajectories:", err));
+
+      // Alertes
       axios.get('/api/alerts')
         .then(res => setAlerts(res.data.alerts || []))
         .catch(() => setAlerts([]));
     };
-    fetchAlerts();
-    const interval = setInterval(fetchAlerts, 5000);
-    return () => clearInterval(interval);
-  }, []);
 
-  // Démarrer la démonstration
-  const startDemo = () => {
-    setIsDemoRunning(true);
-    
-    // Générer des données initiales
-    setDemoDetections(generateTestDetections(8));
-    setDemoTrajectories(generateTestTrajectories(5));
-    
-    // Mettre à jour les données toutes les 3 secondes
-    const interval = setInterval(() => {
-      setDemoDetections(generateTestDetections(5 + Math.floor(Math.random() * 5)));
-      setDemoTrajectories(generateTestTrajectories(3 + Math.floor(Math.random() * 3)));
-    }, 3000);
-    
-    setDemoInterval(interval);
-  };
+    fetchData(); // Appel initial
+    const interval = setInterval(fetchData, 2000); // Mettre à jour toutes les 2 secondes
 
-  // Arrêter la démonstration
-  const stopDemo = () => {
-    setIsDemoRunning(false);
-    if (demoInterval) {
-      clearInterval(demoInterval);
-      setDemoInterval(null);
-    }
-  };
-
-  // Nettoyer l'intervalle lors du démontage
-  useEffect(() => {
-    return () => {
-      if (demoInterval) {
-        clearInterval(demoInterval);
-      }
-    };
-  }, [demoInterval]);
+    return () => clearInterval(interval); // Nettoyer l'intervalle à la fin
+  }, [isConnected]);
 
   return (
+    // --- L'AFFICHAGE EST SIMPLIFIÉ, PLUS DE BOUTONS "DEMO" ---
     <div className="map-demo-container">
       <div className="demo-header">
-        <h3>🎯 Démonstration de la Carte de Tracking</h3>
+        <h3>🎯 Carte de Suivi en Temps Réel</h3>
         <div className="demo-controls">
-          <button 
-            className={`demo-btn ${isDemoRunning ? 'stop' : 'start'}`}
-            onClick={isDemoRunning ? stopDemo : startDemo}
-          >
-            {isDemoRunning ? '⏹️ Arrêter Demo' : '▶️ Démarrer Demo'}
-          </button>
           <span className="demo-status">
-            {isDemoRunning ? '🟢 Simulation en cours' : '🔴 Simulation arrêtée'}
+            {isConnected ? '🟢 Connecté au backend' : '🔴 Backend déconnecté'}
           </span>
         </div>
       </div>
       
-      <div className="demo-info">
-        <p>
-          Cette démonstration simule un système de tracking en temps réel avec des objets 
-          se déplaçant autour de Paris. Les données sont générées automatiquement pour 
-          tester les fonctionnalités de la carte.
-        </p>
-        <ul>
-          <li>📍 <strong>Marqueurs colorés:</strong> Chaque type d'objet a sa propre couleur</li>
-          <li>🛤️ <strong>Trajectoires:</strong> Historique des déplacements des objets</li>
-          <li>📊 <strong>Informations détaillées:</strong> Cliquez sur les marqueurs pour plus d'infos</li>
-          <li>🎛️ <strong>Contrôles:</strong> Activez/désactivez les couches et centrez la vue</li>
-        </ul>
-      </div>
-
       <TrackingMap
-        detections={demoDetections}
-        trajectoryHistory={demoTrajectories}
-        isConnected={true}
-        mapCenter={cameraLocation}
+        detections={liveDetections}
+        trajectoryHistory={liveTrajectories}
+        isConnected={isConnected}
+        mapCenter={roverLocation}
         zoomLevel={13}
         alerts={alerts}
       />
@@ -114,4 +80,9 @@ const MapDemo = () => {
   );
 };
 
-export default MapDemo; 
+LiveTrackingView.propTypes = {
+  isConnected: PropTypes.bool.isRequired,
+};
+
+// Exporter le nouveau nom de composant
+export default LiveTrackingView;

@@ -47,10 +47,9 @@ const TrackingMap = ({
       mapInstance.current = map;
     }
     return () => {
-      if (mapInstance.current) {
-        mapInstance.current.remove();
-        mapInstance.current = null;
-      }
+      if (mapInstance.current && mapCenter) {
+      mapInstance.current.setView(mapCenter, mapInstance.current.getZoom());
+    }
     };
   }, [mapCenter, zoomLevel]); // S'exécute si les props initiales changent
 

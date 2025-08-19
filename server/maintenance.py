@@ -120,6 +120,20 @@ def cleanup_old_backups():
     except Exception as e:
         logging.error(f"❌ Error during backup cleanup: {e}")
 
+def export_daily_report():
+    """Déclenche l'exportation quotidienne des données via l'API."""
+    try:
+        logging.info("🚀 Triggering daily data export...")
+        response = requests.post(f"{SERVER_URL}/api/export/daily", timeout=60)
+        if response.status_code == 200:
+            result = response.json()
+            logging.info(f"✅ Daily export successful: {result.get('message')}")
+        else:
+            logging.error(f"❌ Error during daily export: {response.status_code} - {response.text}")
+    except Exception as e:
+        logging.error(f"❌ Connection error during daily export: {e}")
+
+
 # --- Main Maintenance Loop ---
 def main():
     """Main function for automatic maintenance."""
@@ -128,7 +142,9 @@ def main():
     schedule.every(30).minutes.do(cleanup_old_data)  # Cleanup every 30 minutes
     schedule.every(2).hours.do(optimize_database)    # Optimize every 2 hours
     schedule.every(15).minutes.do(check_system_health)  # Health check every 15 minutes
-    schedule.every().day.at("02:00").do(backup_database)  # Daily backup at 2am
+    #schedule.every().day.at("02:00").do(backup_database)  # Daily backup at 2am
+    schedule.every().day.at("01:00").do(export_daily_report)
+
     # Initial health check
     check_system_health()
     # Main loop
