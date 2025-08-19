@@ -96,7 +96,7 @@ const CameraView = ({
         setErrorMessage(result.error);
       }
     } catch (error) {
-      setErrorMessage(`Erreur: ${error.message || 'Impossible de démarrer la détection'}`);
+      setErrorMessage(`Erreur: ${error.message || 'Unable to start detection'}`);
     } finally {
       setLoading(false);
     }
@@ -166,15 +166,15 @@ const CameraView = ({
           style={{ marginLeft: 'auto', marginRight: 18 }}
         >
           {!isConnected
-            ? 'Backend non disponible'
-            : (loading ? 'Chargement...' : (isDetectionStarted ? '⏸️ Arrêter la détection' : '▶️ Démarrer la détection'))}
+            ? 'Backend not available'
+            : (loading ? 'Loading...' : (isDetectionStarted ? '⏸️ Stop detection' : '▶️ Start detection'))}
         </button>
       </div>
       <div className="status-bar">
         {loading && <span className="status-message">Processing...</span>}
         {errorMessage && (
           <div className="error-message" style={{ color: '#ff5555', padding: '8px', margin: '5px 0', backgroundColor: 'rgba(255,0,0,0.1)', borderRadius: '4px' }}>
-            <strong>Erreur:</strong> {errorMessage}
+            <strong>Error:</strong> {errorMessage}
           </div>
         )}
       </div>
@@ -200,8 +200,8 @@ const CameraView = ({
         {(!isDetectionStarted || !isConnected) && (
           <div className="video-placeholder">
             {!isConnected
-              ? "Le backend n'est pas disponible. L'interface est en mode hors ligne."
-              : "Sélectionnez une source et démarrez la détection pour voir le flux vidéo."}
+              ? "The backend is unavailable. The interface is in offline mode."
+              : "Select a source and start detection to see the video stream."}
           </div>
         )}
 

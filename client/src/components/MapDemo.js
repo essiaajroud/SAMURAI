@@ -60,10 +60,10 @@ const LiveTrackingView = ({ isConnected }) => {
     // --- L'AFFICHAGE EST SIMPLIFIÉ, PLUS DE BOUTONS "DEMO" ---
     <div className="map-demo-container">
       <div className="demo-header">
-        <h3>🎯 Carte de Suivi en Temps Réel</h3>
+        <h3> Real-Time Tracking Map</h3>
         <div className="demo-controls">
           <span className="demo-status">
-            {isConnected ? '🟢 Connecté au backend' : '🔴 Backend déconnecté'}
+            {isConnected ? '🟢 Backend connected' : '🔴 Backend disconnected'}
           </span>
         </div>
       </div>

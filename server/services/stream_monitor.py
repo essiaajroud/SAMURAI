@@ -32,7 +32,7 @@ class StreamMonitor:
                     self.update_heartbeat()
                     time.sleep(self.keepalive_interval)
                 except Exception as e:
-                    logger.error(f"Keepalive error: {str(e)}")
+                    logger.error(f"Keep alive error: {str(e)}")
                     
         Thread(target=keepalive_task, daemon=True).start()
 
@@ -81,7 +81,7 @@ class StreamMonitor:
         self.is_stream_active = False
         if self.reconnect_attempts < self.max_reconnect_attempts:
             self.reconnect_attempts += 1
-            logger.info(f"Tentative de reconnexion {self.reconnect_attempts}/{self.max_reconnect_attempts}")
+            logger.info(f"Attempting to reconnect {self.reconnect_attempts}/{self.max_reconnect_attempts}")
             self.attempt_reconnect()
             
     def attempt_reconnect(self):
@@ -109,7 +109,7 @@ class StreamMonitor:
         self.is_stream_active = False
         time.sleep(self.base_retry_delay)
         self._start_keepalive()
-        logger.info("Connexion réinitialisée, vérification de la disponibilité du serveur...")
+        logger.info("Connection reset, checking server availability...")
         if self.check_server_availability():
             self.attempt_reconnect()
 

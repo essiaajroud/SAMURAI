@@ -51,7 +51,7 @@ class AlertManager:
             if self._point_in_zone(lat, lon, zone["coordinates"]):
                 if self._is_threat(detection, zone):
                     self._create_alert("THREAT", 
-                        f"{detection['label']} détecté en zone {zone['type']}", 
+                        f"{detection['label']} detected in area {zone['type']}", 
                         location, detection, distance)
                     return True
         return False

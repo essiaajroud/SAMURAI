@@ -179,10 +179,10 @@ function App() {
         setIsPlaying(false);
         setSystemStatus('stopped');
         return { success: true };
-      } catch (error) { return { error: `Erreur à l'arrêt: ${error.message}` }; }
+      } catch (error) { return { error: `Error stopping: ${error.message}` }; }
     }
     const isReady = (sourceType === 'video' && selectedVideo) || (sourceType === 'network' && networkUrl);
-    if (!isReady) return { error: 'Aucune source vidéo sélectionnée.' };
+    if (!isReady) return { error: 'No video source selected.' };
     try {
       const payload = sourceType === 'video' ? { video_path: `videos/${selectedVideo}` } : { network_url: networkUrl };
       const response = await fetch(`${API_BASE_URL}/yolo/stream/start`, {
@@ -196,9 +196,9 @@ function App() {
         setSystemStatus('running');
         return { success: true };
       } else {
-        return { error: (await response.json()).error || 'Échec du démarrage' };
+        return { error: (await response.json()).error || 'Startup failure' };
       }
-    } catch (error) { return { error: `Erreur au démarrage: ${error.message}` }; }
+    } catch (error) { return { error: `Error starting: ${error.message}` }; }
   }, [isDetectionStarted, sourceType, selectedVideo, networkUrl]);
 
   // --- RENDER ---

@@ -81,7 +81,7 @@ const TrackingMap = ({
         detections.forEach((d) => {
           if (d.latitude && d.longitude) {
             const marker = window.L.circleMarker([d.latitude, d.longitude], { radius: 8, fillColor: getMarkerColor(d.label), color: '#fff', weight: 2, opacity: 1, fillOpacity: 0.8 });
-            marker.bindPopup(`<h4>${d.label || 'Objet'}</h4><p>Confiance: ${(d.confidence * 100).toFixed(1)}%</p>`);
+            marker.bindPopup(`<h4>${d.label || 'Objet'}</h4><p>Confidence: ${(d.confidence * 100).toFixed(1)}%</p>`);
             layer.addLayer(marker);
           }
         });
@@ -139,33 +139,33 @@ const TrackingMap = ({
         <div className="control-group">
           <label className="control-label">
             <input type="checkbox" checked={showCurrentDetections} onChange={(e) => setShowCurrentDetections(e.target.checked)} />
-            Détections actuelles
+            Current detections
           </label>
           <label className="control-label">
             <input type="checkbox" checked={showTrajectories} onChange={(e) => setShowTrajectories(e.target.checked)} />
-            Trajectoires
+            Trajectories
           </label>
         </div>
         <div className="control-group">
           <label className="control-label">
             <input type="checkbox" checked={showAlerts} onChange={(e) => setShowAlerts(e.target.checked)} />
-            Alertes IA/carto
+            Alerts IA/cartography
           </label>
         </div>
         <div className="control-group">
           <button className="map-btn" onClick={centerOnDetections} disabled={!detections || detections.length === 0}>
-            Centrer sur détections
+            Center on detections
           </button>
           <button className="map-btn" onClick={resetView}>
-            Vue par défaut
+            Default view
           </button>
         </div>
       </div>
       
       <div className="map-status">
         <span className={`status-indicator ${isConnected ? 'connected' : 'disconnected'}`}>●</span>
-        <span className="status-text">{isConnected ? 'Connecté' : 'Déconnecté'}</span>
-        <span className="detection-count">{detections ? detections.length : 0} objet(s) détecté(s)</span>
+        <span className="status-text">{isConnected ? 'connected' : 'disconnected'}</span>
+        <span className="detection-count">{detections ? detections.length : 0} object(s) detected</span>
       </div>
 
       <div ref={mapContainerRef} className="tracking-map"></div>

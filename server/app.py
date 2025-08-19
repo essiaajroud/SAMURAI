@@ -763,16 +763,15 @@ def start_streaming():
                 # Essayer de récupérer les dernières lignes du log
                 last_logs = subprocess.check_output("tail -n 10 server.log", shell=True).decode('utf-8')
             except:
-                last_logs = "Impossible de lire les logs"
-            
-            # Message d'erreur détaillé
-            error_message = "Échec du démarrage du flux. "
+                last_logs = "Unable to read logs"
+            # Detailed error message
+            error_message = "Failed to start streaming. "
             if "Connection" in last_logs and "timed out" in last_logs:
-                error_message += "Timeout de connexion. Vérifiez que l'appareil est accessible et que l'URL est correcte."
+                error_message += "Connection timed out. Check that the device is accessible and the URL is correct."
             elif "Connection" in last_logs and "refused" in last_logs:
-                error_message += "Connexion refusée. Vérifiez que le serveur est en cours d'exécution sur l'appareil cible."
+                error_message += "Connection refused. Check that the server is running on the target device."
             else:
-                error_message += "Consultez les logs du serveur pour plus de détails."
+                error_message += "Check the server logs for more details."
             
             return jsonify({
                 'error': error_message,
@@ -1323,20 +1322,20 @@ def api_alerts():
             if not in_mil:
                 alerts.append({
                     'type': 'danger',
-                    'message': f"Arme détectée en zone non-militaire (objet {det['id']})",
+                    'message': f"Weapon detected in non-military area (objet {det['id']})",
                     'lat': det['lat'],
                     'lon': det['lon'],
-                    'zone': 'civile',
+                    'zone': 'civilian',
                     'timestamp': det['timestamp'],
                     'color': 'red'
                 })
             else:
                 alerts.append({
                     'type': 'secure',
-                    'message': f"Arme détectée en zone militaire (objet {det['id']})",
+                    'message': f"Weapon detected in military zone (objet {det['id']})",
                     'lat': det['lat'],
                     'lon': det['lon'],
-                    'zone': 'militaire',
+                    'zone': 'military',
                     'timestamp': det['timestamp'],
                     'color': 'green'
                 })
@@ -1344,10 +1343,10 @@ def api_alerts():
         elif 'person' in det['class'].lower() and det.get('speed') is not None and det['speed'] > 5:
             alerts.append({
                 'type': 'anomaly',
-                'message': f"Personne (objet {det['id']}) avec vitesse anormale : {det['speed']:.1f} m/s",
+                'message': f"Person (objet {det['id']})  with abnormal speed : {det['speed']:.1f} m/s",
                 'lat': det['lat'],
                 'lon': det['lon'],
-                'zone': 'inconnue',
+                'zone': 'unknown',
                 'timestamp': det['timestamp'],
                 'color': 'orange'
             })

@@ -67,19 +67,19 @@ const PerformancePanel = ({
     alerts.push({ id: 'backend', level: isConnected ? 'info' : 'error', message: `Backend ${isConnected ? 'connected' : 'not connected'}` });
     if(isConnected) {
         if (modelMetrics.fps === 0 && modelMetrics.inferenceTime > 0) {
-            alerts.push({ id: 'camera', level: 'warning', message: 'Caméra connectée mais le flux semble figé (0 FPS)' });
+            alerts.push({ id: 'camera', level: 'warning', message: 'Camera connected but stream seems frozen (0 FPS)' });
         }
         if (systemMetrics.cpu_percent > 90) {
-            alerts.push({ id: 'cpu', level: 'warning', message: `Utilisation CPU élevée (${systemMetrics.cpu_percent}%)` });
+            alerts.push({ id: 'cpu', level: 'warning', message: `High CPU usage (${systemMetrics.cpu_percent}%)` });
         }
         if (systemMetrics.ram_percent > 85) {
-            alerts.push({ id: 'ram', level: 'warning', message: `Utilisation RAM critique (${systemMetrics.ram_percent}%)` });
+            alerts.push({ id: 'ram', level: 'warning', message: `Critical RAM usage (${systemMetrics.ram_percent}%)` });
         }
         if (modelMetrics.gpuUsage > 90) { // Déclenche dès 10%
-        alerts.push({ id: 'gpu-usage', level: 'warning', message: ` Utilisation GPU élevée (${formatMetric(modelMetrics.gpuUsage)}%)` });
+        alerts.push({ id: 'gpu-usage', level: 'warning', message: `High GPU usage (${formatMetric(modelMetrics.gpuUsage)}%)` });
       }
         if (systemMetrics.battery_percent != null && systemMetrics.battery_percent < 20 && !systemMetrics.battery_plugged) {
-            alerts.push({ id: 'battery', level: 'warning', message: `Batterie faible (${systemMetrics.battery_percent}%)` });
+            alerts.push({ id: 'battery', level: 'warning', message: `Low battery (${systemMetrics.battery_percent}%)` });
         }
         if (sourceType === 'network') {
            const isCameraActive = isDetectionStarted && modelMetrics.fps > 0;
@@ -88,7 +88,7 @@ const PerformancePanel = ({
         alerts.push({
         id: 'camera-status',
         level: isCameraActive ? 'info' : 'error',
-        message: `Caméra ${isCameraActive ? 'connectée' : 'non connectée'}`
+        message: `Camera ${isCameraActive ? 'connected' : 'not connected'}`
       });
       } 
     }
@@ -142,7 +142,7 @@ const PerformancePanel = ({
       </div>
       <div className="metrics-row">
         <div className="metric-card metric-card-wide">
-          <strong>Objets détectés par classe</strong>
+          <strong>Objects detected by class</strong>
           <ul>
             {modelMetrics.objectsByClass && Object.keys(modelMetrics.objectsByClass).length > 0
               ? Object.entries(modelMetrics.objectsByClass).map(([cls, count]) => <li key={cls}>{cls}: {count}</li>)
@@ -152,8 +152,8 @@ const PerformancePanel = ({
       </div>
        <div className="metrics-row">
           <div className="metric-card">Total Detections<br /><span>{detectionHistory.length}</span></div>
-          <div className="metric-card">Classes Uniques<br /><span>{classHistoryData.datasets.filter(ds => ds.data.some(d => d > 0)).length}</span></div>
-          <div className="metric-card">Période<br /><span>Dernière heure</span></div>
+          <div className="metric-card">Unique Classes<br /><span>{classHistoryData.datasets.filter(ds => ds.data.some(d => d > 0)).length}</span></div>
+          <div className="metric-card">Time Range<br /><span>Last hour</span></div>
         </div>
       <div className="metrics-row" style={{ height: '200px' }}>
         <div className="chart-container">
@@ -168,13 +168,13 @@ const PerformancePanel = ({
                 tension: 0.3
               }]
             }}
-            options={{ ...baseChartOptions, plugins: { ...baseChartOptions.plugins, title: { ...baseChartOptions.plugins.title, text: 'Historique des détections' } } }}
+            options={{ ...baseChartOptions, plugins: { ...baseChartOptions.plugins, title: { ...baseChartOptions.plugins.title, text: 'Detection history' } } }}
           />
         </div>
         <div className="chart-container">
           <Bar
             data={classHistoryData}
-            options={{ ...baseChartOptions, plugins: { ...baseChartOptions.plugins, title: { ...baseChartOptions.plugins.title, text: 'Détections par classe' } }, scales: { ...baseChartOptions.scales, x: { ...baseChartOptions.scales.x, stacked: true }, y: { ...baseChartOptions.scales.y, stacked: true } } }}
+            options={{ ...baseChartOptions, plugins: { ...baseChartOptions.plugins, title: { ...baseChartOptions.plugins.title, text: 'Detections by class' } }, scales: { ...baseChartOptions.scales, x: { ...baseChartOptions.scales.x, stacked: true }, y: { ...baseChartOptions.scales.y, stacked: true } } }}
           />
         </div>
       </div>

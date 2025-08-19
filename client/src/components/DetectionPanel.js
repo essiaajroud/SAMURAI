@@ -230,8 +230,8 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], trajectoryHist
             <table>
               <thead>
                 <tr>
-                  <th>🎯 Object</th>
-                  <th>📊 Confidence</th>
+                  <th> Object</th>
+                  <th> Confidence</th>
                   <th>📍 Position (x, y)</th>
                 </tr>
               </thead>
@@ -268,8 +268,8 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], trajectoryHist
                   <thead>
                     <tr>
                       <th>🕒 DateTime</th>
-                      <th>🎯 Object</th>
-                      <th>📊 Confidence</th>
+                      <th> Object</th>
+                      <th> Confidence</th>
                       <th>📍 Position (x, y)</th>
                     </tr>
                   </thead>
@@ -306,10 +306,10 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], trajectoryHist
             <table>
               <thead>
                 <tr>
-                  <th>🔍 ID</th>
-                  <th>🎯 Label</th>
+                  <th> ID</th>
+                  <th> Label</th>
                   <th>⏱️ Durée de vie (s)</th>
-                  <th>📏 Distance Rover-objet</th>
+                  <th> Rover-object distance</th>
                 </tr>
               </thead>
               <tbody>

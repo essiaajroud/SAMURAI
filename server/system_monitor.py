@@ -39,7 +39,7 @@ class SystemMonitor:
     def _init_nvml(self):
         """Initialise la bibliothèque NVML pour une surveillance GPU précise."""
         if not self.gpu_available:
-            print("ℹ️ GPU non disponible, la surveillance GPU est désactivée.")
+            print("ℹ️ GPU not available, GPU monitoring is disabled.")
             return
 
         try:
@@ -48,15 +48,15 @@ class SystemMonitor:
             self.nvml = pynvml
             self.gpu_handle = self.nvml.nvmlDeviceGetHandleByIndex(0)
             self.nvml_available = True
-            print("✅ NVML initialisé pour la surveillance du GPU.")
+            print("✅ NVML initialized for GPU monitoring.")
         except ImportError:
-             print("❌ ERREUR : La bibliothèque 'pynvml' n'est pas installée. Exécutez 'pip install pynvml'.")
+             print("❌ ERROR: The 'pynvml' library is not installed. Run 'pip install pynvml'.")
              self.nvml_available = False
         except Exception as e:
             # Affiche une erreur beaucoup plus détaillée !
-            print(f"❌ ERREUR CRITIQUE : NVML n'a pas pu être initialisé. Les métriques GPU seront à 0.")
-            print(f"   Raison probable : Problème avec les pilotes NVIDIA ou permissions.")
-            print(f"   Message d'erreur original : {e}")
+            print(f"❌ CRITICAL ERROR: NVML could not be initialized. GPU metrics will be 0.")
+            print(f"   Probable reason: Issue with NVIDIA drivers or permissions.")
+            print(f"   Original error message: {e}")
             self.nvml_available = False
 
     def _start_monitoring(self):
