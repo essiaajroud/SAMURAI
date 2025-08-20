@@ -81,7 +81,7 @@ const TrackingMap = ({
         detections.forEach((d) => {
           if (d.latitude && d.longitude) {
             const marker = window.L.circleMarker([d.latitude, d.longitude], { radius: 8, fillColor: getMarkerColor(d.label), color: '#fff', weight: 2, opacity: 1, fillOpacity: 0.8 });
-            marker.bindPopup(`<h4>${d.label || 'Objet'}</h4><p>Confidence: ${(d.confidence * 100).toFixed(1)}%</p>`);
+            marker.bindPopup(`<h4>${d.label || 'Objet'}</h4><p>Confiance: ${(d.confidence * 100).toFixed(1)}%</p>`);
             layer.addLayer(marker);
           }
         });

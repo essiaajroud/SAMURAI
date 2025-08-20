@@ -1,20 +1,20 @@
+// DetectionPanel.js (VERSION FINALE SANS TRAJECTOIRES)
+
 import React, { useState, useMemo } from 'react';
 import './DetectionPanel.css';
 import PropTypes from 'prop-types';
 
-// Custom hook to filter detections and history based on UI controls
 function useDetectionFilters(detections, detectionHistory, confidenceThreshold, selectedClass, timeRange) {
-  // Support both array and object structure for detections
   const detectionsArray = useMemo(() => 
     Array.isArray(detections) ? detections : (detections?.detections || []),
     [detections]
   );
-  // List of available classes for filtering
+  
   const uniqueClasses = useMemo(
     () => ['all', 'person', 'soldier', 'weapon', 'military_vehicles', 'civilian_vehicles', 'military_aircraft', 'civilian_aircraft'],
     []
   );
-  // Filter current detections by class and confidence
+
   const filteredCurrentDetections = useMemo(() =>
     detectionsArray.filter(detection => {
       const matchesClass = selectedClass === 'all' || detection.label === selectedClass;
@@ -24,197 +24,95 @@ function useDetectionFilters(detections, detectionHistory, confidenceThreshold, 
     [detectionsArray, selectedClass, confidenceThreshold]
   );
   
-  // Filter detection history by time, class, and confidence
   const filteredHistory = useMemo(() => {
-    const now = Date.now();
-    let timeLimit = now;
+    const nowMs = Date.now();
+    let timeLimitMs = 0;
     
     switch(timeRange) {
-      case '1h':
-        timeLimit = now - (60 * 60 * 1000);
-        break;
-      case '6h':
-        timeLimit = now - (6 * 60 * 60 * 1000);
-        break;
-      case '24h':
-        timeLimit = now - (24 * 60 * 60 * 1000);
-        break;
-      default:
-        timeLimit = 0;
+      case '1h': timeLimitMs = nowMs - (60 * 60 * 1000); break;
+      case '6h': timeLimitMs = nowMs - (6 * 60 * 60 * 1000); break;
+      case '24h': timeLimitMs = nowMs - (24 * 60 * 60 * 1000); break;
+      default: timeLimitMs = 0;
     }
 
     return detectionHistory.filter(detection => {
-      // Assurer que le timestamp est converti en nombre
-      const timestampMs = typeof detection.timestamp === 'string' 
-        ? new Date(detection.timestamp).getTime() 
-        : detection.timestamp;
-        
-      const isInTimeRange = timestampMs >= timeLimit;
-      const matchesClass = selectedClass === 'all' || detection.label === selectedClass;
-      const matchesConfidence = detection.confidence >= confidenceThreshold;
-
-      return isInTimeRange && matchesClass && matchesConfidence;
+      const timestampMs = new Date(detection.timestamp).getTime();
+      return timestampMs >= timeLimitMs &&
+             (selectedClass === 'all' || detection.label === selectedClass) &&
+             detection.confidence >= confidenceThreshold;
     });
   }, [detectionHistory, selectedClass, confidenceThreshold, timeRange]);
+
   return { uniqueClasses, filteredCurrentDetections, filteredHistory };
 }
 
-// Custom hook to analyze trajectory data
-function useTrajectoryAnalysis(trajectoryHistory) {
-  return useMemo(() =>
-    Object.values(trajectoryHistory).map(trajectory => {
-      const points = trajectory.points;
-      const duration = trajectory.lastSeen - trajectory.startTime;
-      const totalDistance = points.reduce((acc, point, index) => {
-        if (index === 0) return 0;
-        const prevPoint = points[index - 1];
-        const dx = point.x - prevPoint.x;
-        const dy = point.y - prevPoint.y;
-        return acc + Math.sqrt(dx * dx + dy * dy);
-      }, 0);
-      const avgSpeed = duration > 0 ? (totalDistance / duration) * 1000 : 0; // pixels/sec
-      return {
-        id: trajectory.id,
-        label: trajectory.label,
-        startTime: trajectory.startTime,
-        lastSeen: trajectory.lastSeen,
-        duration: duration,
-        totalDistance: totalDistance,
-        avgSpeed: avgSpeed,
-        pointCount: points.length
-      };
-    }),
-    [trajectoryHistory]
-  );
-}
-
-// Main DetectionPanel component
-const DetectionPanel = ({ detections = [], detectionHistory = [], trajectoryHistory = {}, isConnected = false }) => {
+const DetectionPanel = ({ detections = [], detectionHistory = [], isConnected = false }) => {
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.5);
   const [selectedClass, setSelectedClass] = useState('all');
   const [activeTab, setActiveTab] = useState('current');
-  const [timeRange, setTimeRange] = useState('24h'); // Default: 24h for history
+  const [timeRange, setTimeRange] = useState('24h');
 
-  // Use custom hooks for filtering and analytics
   const { uniqueClasses, filteredCurrentDetections, filteredHistory } = useDetectionFilters(
     detections, detectionHistory, confidenceThreshold, selectedClass, timeRange
   );
-  const trajectoryAnalysis = useTrajectoryAnalysis(trajectoryHistory);
 
-  // Export filtered detection history as JSON
   const exportHistory = () => {
     const exportData = {
       exportDate: new Date().toISOString(),
-      exportInfo: {
-        totalDetections: detectionHistory.length,
-        filteredDetections: filteredHistory.length,
-        timeRange: timeRange,
-        confidenceThreshold: confidenceThreshold,
-        selectedClass: selectedClass,
-        exportTimestamp: new Date().toLocaleString()
-      },
-      detectionHistory: detectionHistory,
-      trajectoryHistory: trajectoryHistory,
-      currentDetections: detections,
-      filteredHistory: filteredHistory,
-      filters: {
-        confidenceThreshold,
-        selectedClass,
-        timeRange
-      }
+      filters: { timeRange, confidenceThreshold, selectedClass },
+      detectionCount: filteredHistory.length,
+      detections: filteredHistory,
     };
     const dataStr = JSON.stringify(exportData, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `detection_history_${new Date().toISOString().split('T')[0]}_${timeRange}.json`;
-    document.body.appendChild(link);
+    link.download = `detection_export_${new Date().toISOString().split('T')[0]}.json`;
     link.click();
-    document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
 
-  // --- Render ---
   return (
     <div className="detection-panel" style={{ height: '622px', overflow: 'auto', boxSizing: 'border-box' }}>
-      {/* Panel header with export and filters */}
       <div className="panel-header">
         <div className="header-top">
           <h2>Detection Details</h2>
-          <div className="header-controls">
-            <button 
-              className="export-button"
-              onClick={exportHistory}
-              title={`Export detection history (${filteredHistory.length} detections)`}
-              disabled={!isConnected || filteredHistory.length === 0}
-            >
-              📊 Export ({filteredHistory.length})
-            </button>
-          </div>
+          <button 
+            className="export-button" 
+            onClick={exportHistory}
+            disabled={!isConnected || filteredHistory.length === 0}
+            title={`Export ${filteredHistory.length} detections from history`}
+          >
+            📊 Export ({filteredHistory.length})
+          </button>
         </div>
         <div className="panel-tabs">
-          <button 
-            className={`tab-button ${activeTab === 'current' ? 'active' : ''}`}
-            onClick={() => setActiveTab('current')}
-          >
-            Current
+          <button className={`tab-button ${activeTab === 'current' ? 'active' : ''}`} onClick={() => setActiveTab('current')}>
+            Current ({filteredCurrentDetections.length})
           </button>
-          <button 
-            className={`tab-button ${activeTab === 'history' ? 'active' : ''}`}
-            onClick={() => setActiveTab('history')}
-          >
-            History
-          </button>
-          <button 
-            className={`tab-button ${activeTab === 'trajectories' ? 'active' : ''}`}
-            onClick={() => setActiveTab('trajectories')}
-          >
-            Trajectories
+          <button className={`tab-button ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>
+            History ({filteredHistory.length})
           </button>
         </div>
-        {/* Filters for class, confidence, and time range */}
         <div className="filters">
           <div className="filter-group">
             <label htmlFor="class-select">Class:</label>
-            <select 
-              id="class-select"
-              value={selectedClass}
-              onChange={(e) => setSelectedClass(e.target.value)}
-              aria-label="Filter by class"
-            >
+            <select id="class-select" value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)}>
               {uniqueClasses.map(cls => (
-                <option key={cls} value={cls}>
-                  {cls.charAt(0).toUpperCase() + cls.slice(1)}
-                </option>
+                <option key={cls} value={cls}>{cls.charAt(0).toUpperCase() + cls.slice(1).replace('_', ' ')}</option>
               ))}
             </select>
           </div>
           <div className="filter-group">
             <label htmlFor="confidence-range">Confidence:</label>
-            <input
-              id="confidence-range"
-              type="range"
-              min="0"
-              max="1"
-              step="0.1"
-              value={confidenceThreshold}
-              onChange={(e) => setConfidenceThreshold(parseFloat(e.target.value))}
-              aria-valuenow={confidenceThreshold}
-              aria-valuemin={0}
-              aria-valuemax={1}
-            />
+            <input id="confidence-range" type="range" min="0" max="1" step="0.05" value={confidenceThreshold} onChange={(e) => setConfidenceThreshold(parseFloat(e.target.value))} />
             <span>{Math.round(confidenceThreshold * 100)}%</span>
           </div>
           {activeTab === 'history' && (
             <div className="filter-group">
               <label htmlFor="time-range-select">Time Range:</label>
-              <select 
-                id="time-range-select"
-                value={timeRange}
-                onChange={(e) => setTimeRange(e.target.value)}
-                aria-label="Filter by time range"
-              >
+              <select id="time-range-select" value={timeRange} onChange={(e) => setTimeRange(e.target.value)}>
                 <option value="1h">Last Hour</option>
                 <option value="6h">Last 6 Hours</option>
                 <option value="24h">Last 24 Hours</option>
@@ -223,106 +121,49 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], trajectoryHist
           )}
         </div>
       </div>
-      {/* Panel content for current, history, and trajectories */}
+
       <div className="panel-content" style={{ height: 'calc(100% - 170px)', overflow: 'auto' }}>
         {activeTab === 'current' && (
           <div className="detections-table">
-            <table>
-              <thead>
-                <tr>
-                  <th> Object</th>
-                  <th> Confidence</th>
-                  <th>📍 Position (x, y)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredCurrentDetections.map((detection, index) => (
-                  <tr key={index} className={detection.confidence >= 0.8 ? 'high-confidence' : detection.confidence >= 0.6 ? 'medium-confidence' : 'low-confidence'}>
-                    <td><strong>{detection.label}</strong></td>
-                    <td>
-                      <span className={`confidence-badge ${detection.confidence >= 0.8 ? 'high' : detection.confidence >= 0.6 ? 'medium' : 'low'}`}>
-                        {(detection.confidence * 100).toFixed(1)}%
-                      </span>
-                    </td>
-                    <td>({detection.x.toFixed(0)}, {detection.y.toFixed(0)})</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {filteredCurrentDetections.length === 0 ? (
+              <div className="no-data-message"><p>Waiting for new detections...</p></div>
+            ) : (
+              <table>
+                <thead><tr><th>ID</th><th>Object</th><th>Confidence</th><th>📍 GPS (Lat, Lon)</th></tr></thead>
+                <tbody>
+                  {filteredCurrentDetections.map((d) => (
+                    <tr key={d.historyId}>
+                      <td>{d.id}</td>
+                      <td><strong>{d.label}</strong></td>
+                      <td><span className={`confidence-badge ${d.confidence >= 0.8 ? 'high' : 'medium'}`}>{(d.confidence * 100).toFixed(1)}%</span></td>
+                      <td>{d.latitude ? `${d.latitude.toFixed(4)}, ${d.longitude.toFixed(4)}` : 'Calculating...'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
         {activeTab === 'history' && (
           <div className="detections-table">
             {filteredHistory.length === 0 ? (
-              <div className="no-data-message">
-                <p>📊 No detections found for the selected criteria</p>
-                <p>Period: {timeRange === '1h' ? 'Last hour' : timeRange === '6h' ? 'Last 6 hours' : 'Last 24 hours'}</p>
-                <p>Confidence: ≥{(confidenceThreshold * 100).toFixed(0)}% | Class: {selectedClass === 'all' ? 'All' : selectedClass}</p>
-              </div>
+              <div className="no-data-message"><p>No historical detections match the current filters.</p></div>
             ) : (
-              <>
-                <div className="history-summary">
-                  <span>📈 {filteredHistory.length} detections in the {timeRange === '1h' ? 'last hour' : timeRange === '6h' ? 'last 6 hours' : 'last 24 hours'}</span>
-                </div>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>🕒 DateTime</th>
-                      <th> Object</th>
-                      <th> Confidence</th>
-                      <th>📍 Position (x, y)</th>
+              <table>
+                <thead><tr><th>ID</th><th>🕒 DateTime</th><th>Object</th><th>Confidence</th><th>📍 GPS (Lat, Lon)</th></tr></thead>
+                <tbody>
+                  {filteredHistory.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).map((d) => (
+                    <tr key={d.historyId}>
+                      <td>{d.id}</td>
+                      <td>{new Date(d.timestamp).toLocaleString()}</td>
+                      <td><strong>{d.label}</strong></td>
+                      <td><span className={`confidence-badge ${d.confidence >= 0.8 ? 'high' : 'medium'}`}>{(d.confidence * 100).toFixed(1)}%</span></td>
+                      <td>{d.latitude ? `${d.latitude.toFixed(4)}, ${d.longitude.toFixed(4)}` : 'N/A'}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {filteredHistory
-                      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)) // Trier par date décroissante
-                      .map((detection, index) => (
-                      <tr key={index} className={detection.confidence >= 0.8 ? 'high-confidence' : detection.confidence >= 0.6 ? 'medium-confidence' : 'low-confidence'}>
-                        <td>{new Date(detection.timestamp).toLocaleString('en-US', {
-                          year: 'numeric',
-                          month: '2-digit',
-                          day: '2-digit',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit'
-                        })}</td>
-                        <td><strong>{detection.label}</strong></td>
-                        <td>
-                          <span className={`confidence-badge ${detection.confidence >= 0.8 ? 'high' : detection.confidence >= 0.6 ? 'medium' : 'low'}`}>
-                            {(detection.confidence * 100).toFixed(1)}%
-                          </span>
-                        </td>
-                        <td>({detection.x.toFixed(0)}, {detection.y.toFixed(0)})</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </>
+                  ))}
+                </tbody>
+              </table>
             )}
-          </div>
-        )}
-        {activeTab === 'trajectories' && (
-          <div className="detections-table">
-            <table>
-              <thead>
-                <tr>
-                  <th> ID</th>
-                  <th> Label</th>
-                  <th>⏱️ Durée de vie (s)</th>
-                  <th> Rover-object distance</th>
-                </tr>
-              </thead>
-              <tbody>
-                {trajectoryAnalysis.map((traj, index) => (
-                  <tr key={index}>
-                    <td>{traj.id}</td>
-                    <td><strong>{traj.label}</strong></td>
-                    <td>{(traj.duration / 1000).toFixed(1)}</td>
-                    <td>{traj.totalDistance ? traj.totalDistance.toFixed(1) : '--'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         )}
       </div>
@@ -331,9 +172,8 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], trajectoryHist
 };
 
 DetectionPanel.propTypes = {
-  detections: PropTypes.array,
+  detections: PropTypes.oneOfType([PropTypes.array, PropTypes.object]),
   detectionHistory: PropTypes.array,
-  trajectoryHistory: PropTypes.object,
   isConnected: PropTypes.bool
 };
 
