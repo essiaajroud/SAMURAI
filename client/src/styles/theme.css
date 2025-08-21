@@ -1,0 +1,23 @@
+/* Core theme variables */
+:root {
+  --primary-color: #00ff00;
+  --background-color: rgba(26, 26, 26, 0.95);
+  --text-color: #ffffff;
+  --border-color: #333;
+  --hover-color: rgba(0, 255, 0, 0.1);
+  
+  /* Sizing */
+  --border-radius: 8px;
+  --padding-standard: 15px;
+  
+  /* Effects */
+  --shadow-glow: 0 4px 16px rgba(0, 255, 0, 0.3);
+  --blur-effect: blur(10px);
+}
+
+/* Animation definitions */
+@keyframes glow {
+  0% { box-shadow: 0 0 5px var(--primary-color); }
+  50% { box-shadow: 0 0 15px var(--primary-color); }
+  100% { box-shadow: 0 0 5px var(--primary-color); }
+}

@@ -1,8 +1,7 @@
-// PerformancePanel.js (VERSION FINALE, COMPLÈTE, ET SANS AVERTISSEMENTS)
-
+// Performance monitoring and visualization component
 import React, { useState, useEffect, useMemo } from 'react';
-import axios from 'axios';
 import PropTypes from 'prop-types';
+import axios from 'axios';
 import { Line, Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -19,12 +18,7 @@ import './PerformancePanel.css';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend);
 
-// --- Fonctions Utilitaires ---
-const formatMetric = (value, decimals = 1) => {
-  if (value == null || isNaN(value)) return '--';
-  return value.toFixed(decimals);
-};
-
+// Base chart configuration
 const baseChartOptions = {
   responsive: true,
   maintainAspectRatio: false,
@@ -38,7 +32,13 @@ const baseChartOptions = {
   }
 };
 
-// --- Composant Principal ---
+// Utility functions
+const formatMetric = (value, decimals = 1) => {
+  if (value == null || isNaN(value)) return '--';
+  return value.toFixed(decimals);
+};
+
+// Main component
 const PerformancePanel = ({
   modelMetrics = {}, modelMetricsHistory = [], systemMetrics = {},
   systemMetricsHistory = [], logs = [], detectionHistory = [], isConnected = false, isDetectionStarted = false, sourceType = 'network'
@@ -47,19 +47,68 @@ const PerformancePanel = ({
   const [realtimeAlerts, setRealtimeAlerts] = useState([]);
   const [systemAlerts, setSystemAlerts] = useState([]);
 
+  // --- Data Processing with useMemo ---
+  const processedMetrics = useMemo(() => {
+    const knownClasses = ['person', 'soldier', 'weapon', 'military_vehicles', 'civilian_vehicles', 'military_aircraft', 'civilian_aircraft'];
+    
+    // Process detection history data
+    const timeLabels = [...new Set(detectionHistory.map(d => 
+      new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    ))].slice(-10);
+
+    // Group detections by class and time
+    const groupedDetections = {};
+    timeLabels.forEach(t => { groupedDetections[t] = {}; });
+    detectionHistory.forEach(d => {
+      const t = new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      if (groupedDetections[t]) {
+        const cls = d.label || 'unknown';
+        groupedDetections[t][cls] = (groupedDetections[t][cls] || 0) + 1;
+      }
+    });
+
+    return {
+      timeLabels,
+      classData: {
+        labels: timeLabels,
+        datasets: knownClasses.map((cls, idx) => ({
+          label: cls,
+          data: timeLabels.map(t => groupedDetections[t]?.[cls] || 0),
+          backgroundColor: `hsl(${(idx * 360) / knownClasses.length}, 70%, 50%)`,
+          maxBarThickness: 75
+        }))
+      },
+      totalData: {
+        labels: timeLabels,
+        datasets: [{
+          label: 'Total Detections',
+          data: timeLabels.map(t => 
+            Object.values(groupedDetections[t] || {}).reduce((sum, val) => sum + val, 0)
+          ),
+          borderColor: 'rgb(54, 162, 235)',
+          backgroundColor: 'rgba(54, 162, 235, 0.3)',
+          tension: 0.3
+        }]
+      }
+    };
+  }, [detectionHistory]);
+
   // --- Logique pour les alertes ---
   useEffect(() => {
     let interval = null;
     if (isConnected && selectedTab === 'logs') {
-      const fetchAlerts = () => {
-        axios.get('/api/alerts')
-          .then(res => setRealtimeAlerts(res.data.alerts || []))
-          .catch(() => setRealtimeAlerts([]));
+      const fetchAlerts = async () => {
+        try {
+          const res = await axios.get('/api/alerts');
+          setRealtimeAlerts(res.data.alerts || []);
+        } catch {
+          setRealtimeAlerts([]);
+        }
       };
       fetchAlerts();
       interval = setInterval(fetchAlerts, 5000);
     }
-    return () => clearInterval(interval);
+    return () => interval && clearInterval(interval);
   }, [isConnected, selectedTab]);
 
   useEffect(() => {
@@ -95,42 +144,7 @@ const PerformancePanel = ({
     setSystemAlerts(alerts);
   }, [isConnected, systemMetrics, modelMetrics, isDetectionStarted, sourceType]);
 
-  // --- Préparation des données pour les graphiques (avec useMemo) ---
-  const classHistoryData = useMemo(() => {
-    const knownClasses = ['person', 'soldier', 'weapon', 'military_vehicles', 'civilian_vehicles', 'military_aircraft', 'civilian_aircraft'];
-    const grouped = {};
-    if (detectionHistory?.length) {
-      detectionHistory.forEach(d => {
-        const t = new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const cls = d.label || 'unknown';
-        if (!grouped[t]) grouped[t] = {};
-        grouped[t][cls] = (grouped[t][cls] || 0) + 1;
-      });
-    }
-    const labels = [...new Set(detectionHistory.map(d => new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })))].slice(-10);
-    const datasets = knownClasses.map((cls, idx) => ({
-      label: cls,
-      data: labels.map(t => grouped[t]?.[cls] || 0),
-      backgroundColor: `hsl(${(idx * 360) / knownClasses.length}, 70%, 50%)`,
-      maxBarThickness: 75
-    }));
-    return { labels, datasets };
-  }, [detectionHistory]);
-
-  const detectionHistoryData = useMemo(() => {
-    const groupedByTime = {};
-    if (detectionHistory?.length) {
-      detectionHistory.forEach(d => {
-        const timeLabel = new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        groupedByTime[timeLabel] = (groupedByTime[timeLabel] || 0) + 1;
-      });
-    }
-    const labels = Object.keys(groupedByTime).slice(-10);
-    const data = labels.map(label => groupedByTime[label]);
-    return { labels, data };
-  }, [detectionHistory]);
-
-  // --- JSX POUR LES ONGLETS ---
+  // --- RENDU DES DONNÉES DE PERFORMANCE ---
   const renderModelPerformance = () => (
     <div className="model-metrics-section">
       <div className="metrics-row">
@@ -152,29 +166,37 @@ const PerformancePanel = ({
       </div>
        <div className="metrics-row">
           <div className="metric-card">Total Detections<br /><span>{detectionHistory.length}</span></div>
-          <div className="metric-card">Unique Classes<br /><span>{classHistoryData.datasets.filter(ds => ds.data.some(d => d > 0)).length}</span></div>
+          <div className="metric-card">Unique Classes<br /><span>{processedMetrics.classData.datasets.filter(ds => ds.data.some(d => d > 0)).length}</span></div>
           <div className="metric-card">Time Range<br /><span>Last hour</span></div>
         </div>
       <div className="metrics-row" style={{ height: '200px' }}>
         <div className="chart-container">
           <Line
-            data={{
-              labels: detectionHistoryData.labels,
-              datasets: [{
-                label: 'Total Detections',
-                data: detectionHistoryData.data,
-                borderColor: 'rgb(54, 162, 235)',
-                backgroundColor: 'rgba(54, 162, 235, 0.3)',
-                tension: 0.3
-              }]
+            data={processedMetrics.totalData}
+            options={{
+              ...baseChartOptions,
+              plugins: {
+                ...baseChartOptions.plugins,
+                title: { ...baseChartOptions.plugins.title, text: 'Detection history' }
+              }
             }}
-            options={{ ...baseChartOptions, plugins: { ...baseChartOptions.plugins, title: { ...baseChartOptions.plugins.title, text: 'Detection history' } } }}
           />
         </div>
         <div className="chart-container">
           <Bar
-            data={classHistoryData}
-            options={{ ...baseChartOptions, plugins: { ...baseChartOptions.plugins, title: { ...baseChartOptions.plugins.title, text: 'Detections by class' } }, scales: { ...baseChartOptions.scales, x: { ...baseChartOptions.scales.x, stacked: true }, y: { ...baseChartOptions.scales.y, stacked: true } } }}
+            data={processedMetrics.classData}
+            options={{
+              ...baseChartOptions,
+              plugins: {
+                ...baseChartOptions.plugins,
+                title: { ...baseChartOptions.plugins.title, text: 'Detections by class' }
+              },
+              scales: {
+                ...baseChartOptions.scales,
+                x: { ...baseChartOptions.scales.x, stacked: true },
+                y: { ...baseChartOptions.scales.y, stacked: true }
+              }
+            }}
           />
         </div>
       </div>

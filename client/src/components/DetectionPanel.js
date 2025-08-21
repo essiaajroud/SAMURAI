@@ -1,9 +1,9 @@
-// DetectionPanel.js (VERSION FINALE SANS TRAJECTOIRES)
-
+// Detection panel component for displaying current and historical detections
 import React, { useState, useMemo } from 'react';
 import './DetectionPanel.css';
 import PropTypes from 'prop-types';
 
+// Filtering logic hook
 function useDetectionFilters(detections, detectionHistory, confidenceThreshold, selectedClass, timeRange) {
   const detectionsArray = useMemo(() => 
     Array.isArray(detections) ? detections : (detections?.detections || []),
@@ -47,19 +47,21 @@ function useDetectionFilters(detections, detectionHistory, confidenceThreshold, 
 }
 
 const DetectionPanel = ({ detections = [], detectionHistory = [], isConnected = false }) => {
-  const [confidenceThreshold, setConfidenceThreshold] = useState(0.5);
-  const [selectedClass, setSelectedClass] = useState('all');
+  const [filters, setFilters] = useState({
+    confidenceThreshold: 0.5,
+    selectedClass: 'all',
+    timeRange: '24h'
+  });
   const [activeTab, setActiveTab] = useState('current');
-  const [timeRange, setTimeRange] = useState('24h');
 
   const { uniqueClasses, filteredCurrentDetections, filteredHistory } = useDetectionFilters(
-    detections, detectionHistory, confidenceThreshold, selectedClass, timeRange
+    detections, detectionHistory, filters.confidenceThreshold, filters.selectedClass, filters.timeRange
   );
 
   const exportHistory = () => {
     const exportData = {
       exportDate: new Date().toISOString(),
-      filters: { timeRange, confidenceThreshold, selectedClass },
+      filters: { timeRange: filters.timeRange, confidenceThreshold: filters.confidenceThreshold, selectedClass: filters.selectedClass },
       detectionCount: filteredHistory.length,
       detections: filteredHistory,
     };
@@ -74,7 +76,7 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], isConnected = 
   };
 
   return (
-    <div className="detection-panel" style={{ height: '622px', overflow: 'auto', boxSizing: 'border-box' }}>
+    <div className="detection-panel" style={{ height: '622px', width: '100%', maxWidth: '100%', overflow: 'hidden', boxSizing: 'border-box' }}>
       <div className="panel-header">
         <div className="header-top">
           <h2>Detection Details</h2>
@@ -98,7 +100,7 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], isConnected = 
         <div className="filters">
           <div className="filter-group">
             <label htmlFor="class-select">Class:</label>
-            <select id="class-select" value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)}>
+            <select id="class-select" value={filters.selectedClass} onChange={(e) => setFilters({ ...filters, selectedClass: e.target.value })}>
               {uniqueClasses.map(cls => (
                 <option key={cls} value={cls}>{cls.charAt(0).toUpperCase() + cls.slice(1).replace('_', ' ')}</option>
               ))}
@@ -106,13 +108,13 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], isConnected = 
           </div>
           <div className="filter-group">
             <label htmlFor="confidence-range">Confidence:</label>
-            <input id="confidence-range" type="range" min="0" max="1" step="0.05" value={confidenceThreshold} onChange={(e) => setConfidenceThreshold(parseFloat(e.target.value))} />
-            <span>{Math.round(confidenceThreshold * 100)}%</span>
+            <input id="confidence-range" type="range" min="0" max="1" step="0.05" value={filters.confidenceThreshold} onChange={(e) => setFilters({ ...filters, confidenceThreshold: parseFloat(e.target.value) })} />
+            <span>{Math.round(filters.confidenceThreshold * 100)}%</span>
           </div>
           {activeTab === 'history' && (
             <div className="filter-group">
               <label htmlFor="time-range-select">Time Range:</label>
-              <select id="time-range-select" value={timeRange} onChange={(e) => setTimeRange(e.target.value)}>
+              <select id="time-range-select" value={filters.timeRange} onChange={(e) => setFilters({ ...filters, timeRange: e.target.value })}>
                 <option value="1h">Last Hour</option>
                 <option value="6h">Last 6 Hours</option>
                 <option value="24h">Last 24 Hours</option>
@@ -122,25 +124,27 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], isConnected = 
         </div>
       </div>
 
-      <div className="panel-content" style={{ height: 'calc(100% - 170px)', overflow: 'auto' }}>
+      <div className="panel-content" style={{ height: 'calc(100% - 170px)', overflow: 'hidden', width: '100%' }}>
         {activeTab === 'current' && (
           <div className="detections-table">
             {filteredCurrentDetections.length === 0 ? (
               <div className="no-data-message"><p>Waiting for new detections...</p></div>
             ) : (
-              <table>
-                <thead><tr><th>ID</th><th>Object</th><th>Confidence</th><th>📍 GPS (Lat, Lon)</th></tr></thead>
-                <tbody>
-                  {filteredCurrentDetections.map((d) => (
-                    <tr key={d.historyId}>
-                      <td>{d.id}</td>
-                      <td><strong>{d.label}</strong></td>
-                      <td><span className={`confidence-badge ${d.confidence >= 0.8 ? 'high' : 'medium'}`}>{(d.confidence * 100).toFixed(1)}%</span></td>
-                      <td>{d.latitude ? `${d.latitude.toFixed(4)}, ${d.longitude.toFixed(4)}` : 'Calculating...'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="table-container">
+                <table>
+                  <thead><tr><th>ID</th><th>Object</th><th>Confidence</th><th>📍GPS(Lat, Lon)</th></tr></thead>
+                  <tbody>
+                    {filteredCurrentDetections.map((d) => (
+                      <tr key={d.historyId}>
+                        <td>{d.id}</td>
+                        <td><strong>{d.label}</strong></td>
+                        <td><span className={`confidence-badge ${d.confidence >= 0.8 ? 'high' : 'medium'}`}>{(d.confidence * 100).toFixed(1)}%</span></td>
+                        <td>{d.latitude ? `${d.latitude.toFixed(4)}, ${d.longitude.toFixed(4)}` : 'Calculating...'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         )}
@@ -149,20 +153,22 @@ const DetectionPanel = ({ detections = [], detectionHistory = [], isConnected = 
             {filteredHistory.length === 0 ? (
               <div className="no-data-message"><p>No historical detections match the current filters.</p></div>
             ) : (
-              <table>
-                <thead><tr><th>ID</th><th>🕒 DateTime</th><th>Object</th><th>Confidence</th><th>📍 GPS (Lat, Lon)</th></tr></thead>
-                <tbody>
-                  {filteredHistory.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).map((d) => (
-                    <tr key={d.historyId}>
-                      <td>{d.id}</td>
-                      <td>{new Date(d.timestamp).toLocaleString()}</td>
-                      <td><strong>{d.label}</strong></td>
-                      <td><span className={`confidence-badge ${d.confidence >= 0.8 ? 'high' : 'medium'}`}>{(d.confidence * 100).toFixed(1)}%</span></td>
-                      <td>{d.latitude ? `${d.latitude.toFixed(4)}, ${d.longitude.toFixed(4)}` : 'N/A'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="table-container">
+                <table>
+                  <thead><tr><th>ID</th><th>🕒 DateTime</th><th>Object</th><th>Confidence</th><th>📍GPS(Lat, Lon)</th></tr></thead>
+                  <tbody>
+                    {filteredHistory.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).map((d) => (
+                      <tr key={d.historyId}>
+                        <td>{d.id}</td>
+                        <td>{new Date(d.timestamp).toLocaleString()}</td>
+                        <td><strong>{d.label}</strong></td>
+                        <td><span className={`confidence-badge ${d.confidence >= 0.8 ? 'high' : 'medium'}`}>{(d.confidence * 100).toFixed(1)}%</span></td>
+                        <td>{d.latitude ? `${d.latitude.toFixed(4)}, ${d.longitude.toFixed(4)}` : 'N/A'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         )}

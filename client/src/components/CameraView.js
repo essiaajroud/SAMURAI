@@ -6,152 +6,100 @@ import PropTypes from 'prop-types';
 
 const API_BASE_URL = 'http://localhost:5000/api';
 
-
-// Custom hook to draw detections on the canvas overlay
+// Handle real-time detection drawing on canvas
 function useDrawDetections(canvasRef, detections, videoElement) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !videoElement) return;
     const ctx = canvas.getContext('2d');
 
-    // Match canvas size to video element size
+    // Synchronize canvas dimensions with video
     canvas.width = videoElement.clientWidth;
     canvas.height = videoElement.clientHeight;
-    
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw each detection as a rectangle and label
-    const detectionsArray = Array.isArray(detections) ? detections : [];
-    detectionsArray.forEach(detection => {
-      // Scale detection coords to video display size
+    // Process and draw each detection
+    Array.isArray(detections) && detections.forEach(detection => {
       const scaleX = videoElement.clientWidth / (videoElement.videoWidth || videoElement.clientWidth);
       const scaleY = videoElement.clientHeight / (videoElement.videoHeight || videoElement.clientHeight);
-
-      const { x, y, width, height, label, confidence } = detection;
-      ctx.strokeStyle = '#00ff00';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x * scaleX, y * scaleY, width * scaleX, height * scaleY);
-      ctx.fillStyle = '#00ff00';
-      ctx.font = '14px Arial';
-      ctx.fillText(`${label} (${(confidence * 100).toFixed(1)}%)`, x * scaleX, y * scaleY - 5);
+      drawDetectionBox(ctx, detection, scaleX, scaleY);
     });
   }, [canvasRef, detections, videoElement]);
 }
 
-// Main CameraView component
+// Helper function to draw a single detection box with label
+function drawDetectionBox(ctx, detection, scaleX, scaleY) {
+  const { x, y, width, height, label, confidence } = detection;
+  
+  // Draw bounding box
+  ctx.strokeStyle = '#00ff00';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x * scaleX, y * scaleY, width * scaleX, height * scaleY);
+  
+  // Draw label with confidence
+  ctx.fillStyle = '#00ff00';
+  ctx.font = '14px Arial';
+  ctx.fillText(`${label} (${(confidence * 100).toFixed(1)}%)`, x * scaleX, y * scaleY - 5);
+}
+
+// Main camera view component
 const CameraView = ({ 
-  isPlaying,
-  onPause,
-  detections = [],
   isConnected,
   systemStatus,
-  videos = [],
-  selectedVideo,
-  setSelectedVideo,
   isDetectionStarted,
   onStartStopDetection,
-  sourceType,
-  setSourceType,
   networkUrl,
-  setNetworkUrl
+  setNetworkUrl,
+  detections = []
 }) => {
   const canvasRef = useRef(null);
-  const videoRef = useRef(null); // For local camera feed
-  // SUPPRIMER : const detectionIntervalRef = useRef(null);
+  const videoRef = useRef(null);
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  // This component is now mostly controlled by App.js
-  // Local state can be for UI feedback, like loading, if needed.
-  const [loading, setLoading] = useState(false); // Can still be useful for local UI feedback
-  const [errorMessage, setErrorMessage] = useState(''); // Pour afficher les messages d'erreur
-
-  // --- HOOKS ---
-
-  // Draw detections overlay, now with video element reference
+  // Draw detections overlay
   useDrawDetections(canvasRef, detections || [], videoRef.current);
 
-  // Stop all streams when component unmounts
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      // Ensure detection is stopped on server as well, mais seulement si le backend est connecté
       if (isConnected) {
-        try {
-          fetch(`${API_BASE_URL}/yolo/stream/stop`, { method: 'POST' });
-        } catch (error) {
-          console.warn('Failed to stop stream on unmount:', error);
-        }
+        fetch(`${API_BASE_URL}/yolo/stream/stop`, { method: 'POST' })
+          .catch(error => console.warn('Stream cleanup failed:', error));
       }
     };
   }, [isConnected]);
 
-
-  // The main detection handler is now passed from App.js
+  // Handle start/stop detection
   const handleStartStopClick = async () => {
     setLoading(true);
-    setErrorMessage(''); // Réinitialiser le message d'erreur
-    
+    setErrorMessage('');
     try {
       const result = await onStartStopDetection();
-      // Si onStartStopDetection renvoie un objet avec une erreur, l'afficher
-      if (result && result.error) {
-        setErrorMessage(result.error);
-      }
+      if (result?.error) setErrorMessage(result.error);
     } catch (error) {
-      setErrorMessage(`Erreur: ${error.message || 'Unable to start detection'}`);
+      setErrorMessage(`Error: ${error.message || 'Unable to start detection'}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // Polling logic is now in App.js, so this useEffect is no longer needed here.
-
-
-  // --- RENDER ---
+  // Network URL input component
   const renderSourceSelector = () => (
     <div className="source-selector-container">
-       <label htmlFor="source-type-select">Source:</label>
-       <select 
-         id="source-type-select"
-         value={sourceType}
-         onChange={e => setSourceType(e.target.value)}
-         disabled={isDetectionStarted}
-       >
-         <option value="network">Network Camera (Phone/Rover)</option>
-         <option value="video">Server Video</option>
-       </select>
-       
-       {sourceType === 'video' && (
-         <>
-           <label htmlFor="video-select" style={{ marginLeft: 18 }}>Video:</label>
-           <select
-             id="video-select"
-             value={selectedVideo}
-             onChange={e => setSelectedVideo(e.target.value)}
-             disabled={isDetectionStarted}
-             aria-label="Video selection"
-           >
-             {videos.map(video => (
-               <option key={video} value={video}>{video}</option>
-             ))}
-           </select>
-         </>
-       )}
-       {sourceType === 'network' && (
-         <>
-           <label htmlFor="network-url" style={{ marginLeft: 18 }}>Network URL:</label>
-           <input
-             type="text"
-             id="network-url"
-             value={networkUrl}
-             onChange={e => setNetworkUrl(e.target.value)}
-             placeholder="e.g., http://192.168.1.100:8080/video"
-             disabled={isDetectionStarted}
-             style={{ marginLeft: 18 }}
-           />
-         </>
-       )}
+      <label htmlFor="network-url">Network URL:</label>
+      <input
+        type="text"
+        id="network-url"
+        value={networkUrl}
+        onChange={e => setNetworkUrl(e.target.value)}
+        placeholder="e.g., http://192.168.1.100:8080/video"
+        disabled={isDetectionStarted}
+      />
     </div>
   );
 
+  // --- RENDER ---
   return (
     <div className="camera-view">
       {/* Video selection and control bar */}
@@ -161,7 +109,7 @@ const CameraView = ({
         <button
           className={`control-button ${isDetectionStarted ? 'pause' : 'play'}`}
           onClick={handleStartStopClick}
-          disabled={loading || !isConnected || (sourceType === 'video' && !selectedVideo) || (sourceType === 'network' && !networkUrl)}
+          disabled={loading || !isConnected || !networkUrl}
           aria-busy={loading}
           style={{ marginLeft: 'auto', marginRight: 18 }}
         >
@@ -215,22 +163,15 @@ const CameraView = ({
   );
 };
 
+// PropTypes validation for component props
 CameraView.propTypes = {
-  isPlaying: PropTypes.bool.isRequired,
-  onPause: PropTypes.func.isRequired,
-  onStep: PropTypes.func,
-  detections: PropTypes.array,
   isConnected: PropTypes.bool.isRequired,
   systemStatus: PropTypes.string.isRequired,
-  videos: PropTypes.array.isRequired,
-  selectedVideo: PropTypes.string.isRequired,
-  setSelectedVideo: PropTypes.func.isRequired,
   isDetectionStarted: PropTypes.bool.isRequired,
   onStartStopDetection: PropTypes.func.isRequired,
-  sourceType: PropTypes.string.isRequired,
-  setSourceType: PropTypes.func.isRequired,
   networkUrl: PropTypes.string.isRequired,
-  setNetworkUrl: PropTypes.func.isRequired
+  setNetworkUrl: PropTypes.func.isRequired,
+  detections: PropTypes.array
 };
 
 export default CameraView;

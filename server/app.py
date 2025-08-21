@@ -1,4 +1,4 @@
-# app.py - Main Flask application for the military detection server
+# Main Flask application for military detection system
 # Handles API endpoints, database models, YOLO integration, and streaming
 
 from flask import Flask, request, jsonify, send_from_directory, Response
@@ -27,24 +27,17 @@ from config import get_config
 config = get_config()
 ENABLE_LOGS = config.ENABLE_LOGS
 
+# App initialization
 app = Flask(__name__)
+app.config.update({
+    'SQLALCHEMY_DATABASE_URI': f"sqlite:///{os.path.join(app.instance_path, 'detection_history.db')}",
+    'SQLALCHEMY_TRACK_MODIFICATIONS': False,
+    'SECRET_KEY': 'your-secret-key-here'
+})
 
-# Assurer que le dossier d'instance pour la DB existe
-try:
-    os.makedirs(app.instance_path)
-except OSError:
-    pass
-
-# --- Logging ---
-if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
-    file_handler = RotatingFileHandler('server.log', maxBytes=1024 * 1024 * 10, backupCount=5, encoding='utf-8')
-    file_handler.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    file_handler.setFormatter(formatter)
-    app.logger.addHandler(file_handler)
-    app.logger.setLevel(logging.INFO)
-    app.logger.info('SAMURAI Server startup')
-
+# Core components initialization
+db = SQLAlchemy(app)
+CORS(app)
 camera_location_manager = CameraLocationManager(socketio=None)
 
 zone_polygons = {'military': []}
@@ -60,14 +53,15 @@ except Exception as e:
     YOLO_AVAILABLE = False
     detector = None
 
-# --- App Configuration ---
-app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(app.instance_path, 'detection_history.db')}"
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = 'your-secret-key-here'
-
-# --- Extensions Initialization ---
-db = SQLAlchemy(app)
-CORS(app)
+# --- Logging ---
+if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+    file_handler = RotatingFileHandler('server.log', maxBytes=1024 * 1024 * 10, backupCount=5, encoding='utf-8')
+    file_handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    app.logger.addHandler(file_handler)
+    app.logger.setLevel(logging.INFO)
+    app.logger.info('SAMURAI Server startup')
 
 # --- Database Models ---
 class Detection(db.Model):
