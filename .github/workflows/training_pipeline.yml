@@ -1,0 +1,84 @@
+name: YOLO Model Training Pipeline
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "dataset/**"
+      - "mlops/scripts/**"
+      - ".github/workflows/training_pipeline.yml"
+
+jobs:
+  train-and-evaluate-model:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Set up DVC
+        uses: iterative/dvc-action@v1
+
+      # --- NOUVELLE ÉTAPE IMPORTANTE ---
+      # Prend le secret de GitHub et l'écrit dans un fichier credentials.json
+      # que DVC pourra trouver et utiliser.
+      - name: Create DVC credentials file from secret
+        # Cette étape ne s'exécute que si le secret existe
+        if: ${{ secrets.GDRIVE_CREDENTIALS_DATA != '' }}
+        run: |
+          # Crée le dossier de configuration de DVC s'il n'existe pas
+          mkdir -p .dvc/tmp
+          # Écrit le contenu du secret dans le fichier
+          echo '${{ secrets.GDRIVE_CREDENTIALS_DATA }}' > .dvc/tmp/gdrive-creds.json
+
+      # Étape mise à jour pour utiliser le fichier créé
+      - name: Pull data from DVC remote
+        run: dvc pull -r myremote # Remplacez 'myremote' par le nom de votre remote DVC
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r server/requirements.txt
+          pip install mlflow
+
+      - name: Run model training script
+        id: training_step
+        run: |
+          output=$(python mlops/scripts/train.py --epochs 10 --batch 8 --data dataset/samurai/data.yaml --model yolov8s)
+          echo "$output"
+          run_id=$(echo "$output" | grep 'MLflow Run ID:' | awk '{print $4}')
+          echo "run_id=$run_id" >> $GITHUB_OUTPUT
+
+      - name: Compare new model with production model
+        id: comparison_step # On donne un ID à cette étape
+        run: |
+          # On lance notre script de comparaison avec l'ID du run de l'étape précédente
+          python mlops/scripts/compare_models.py --run_id ${{ steps.training_step.outputs.run_id }}
+
+          # On lit le résultat du script et on l'expose comme une sortie
+          result=$(cat comparison_result.txt)
+          echo "is_better=$result" >> $GITHUB_OUTPUT
+
+      - name: Deploy model if it is better
+        if: ${{ steps.comparison_step.outputs.is_better == 'true' }}
+        run: |
+          echo "🚀 DEPLOYMENT TRIGGERED! 🚀"
+          echo "The new model with Run ID ${{ steps.training_step.outputs.run_id }} is better and would be deployed now."
+          # C'est ici que vous mettriez votre vrai script de déploiement (SSH, etc.)
+
+      - name: Do not deploy if model is not better
+        if: ${{ steps.comparison_step.outputs.is_better == 'false' }}
+        run: |
+          echo "🛑 Deployment skipped. The new model is not better than the production version."
+
+      - name: Upload MLflow artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: mlflow-tracking-results
+          path: mlruns/

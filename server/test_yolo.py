@@ -88,17 +88,9 @@ def main():
     # Test 2: YOLO model
     print("\n2. Testing YOLO model...")
     test_yolo_model()
-    # Test 3: Videos list
-    print("\n3. Testing available videos...")
-    videos = test_videos_list()
-    if videos:
-        print(f"📹 {len(videos)} video(s) found:")
-        for video in videos:
-            print(f"   - {video}")
-    else:
-        print("📹 No videos found.")
+    
     # Test 4: Streaming status
-    print("\n4. Testing streaming status...")
+    print("\n3. Testing streaming status...")
     test_streaming_status()
     print("\n✅ Tests completed.")
 

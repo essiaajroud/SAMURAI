@@ -11,26 +11,27 @@ import queue
 import numpy as np
 import traceback
 
-# Imports de configuration
-from config import get_config
-from gpu_config import gpu_config
-from system_monitor import system_monitor
-
-config = get_config()
-ENABLE_LOGS = config.ENABLE_LOGS
 
 class YOLODetector:
-    def __init__(self, model_path="models/best.onnx", confidence_threshold=0.5, app=None, location_manager=None):
-        self.app=app
+    def __init__(self, location_manager, config, app_for_context):
         self.location_manager = location_manager
+        self.config = config
+        self.ENABLE_LOGS = self.config.get('ENABLE_LOGS', True)
+        self.app = app_for_context
+
+        from .gpu_config import gpu_config
+        from .system_monitor import system_monitor
+
         self.device = gpu_config.get_device()
-        if ENABLE_LOGS:
+        self.system_monitor = system_monitor
+
+        self.model_path = self.config.get('YOLO_MODEL_PATH')
+        self.confidence_threshold = self.config.get('YOLO_CONFIDENCE_THRESHOLD')
+        self.tracker_config_path = self.config.get('YOLO_TRACKER_CONFIG', 'botsort.yaml')
+        if self.ENABLE_LOGS:
             print(f"🔧 Initializing YOLO detector on {self.device}")
             if gpu_config.gpu_available:
                 print(f"GPU: {gpu_config.gpu_name}")
-
-        self.model_path = model_path
-        self.confidence_threshold = confidence_threshold
         self.model = None
         self.detection_callback = None
         self.is_running = False
@@ -45,18 +46,18 @@ class YOLODetector:
         self.seen_track_ids = set()
         self.active_trajectories = 0
 
-        self.onnx_providers = system_monitor.onnx_providers
+        #self.onnx_providers = system_monitor.onnx_providers
         self.load_model()
 
     def load_model(self):
         if not os.path.exists(self.model_path):
-            if ENABLE_LOGS: print(f"❌ Model not found: {self.model_path}")
+            if self.ENABLE_LOGS: print(f"❌ Model not found: {self.model_path}")
             return
         try:
             self.model = YOLO(self.model_path, task="detect")
-            if ENABLE_LOGS: print(f"✅ Model loaded: {self.model_path}")
+            if self.ENABLE_LOGS: print(f"✅ Model loaded: {self.model_path}")
         except Exception as e:
-            if ENABLE_LOGS: print(f"❌ Error loading model: {e}")
+            if self.ENABLE_LOGS: print(f"❌ Error loading model: {e}")
             self.model = None
 
     def set_detection_callback(self, callback):
@@ -76,7 +77,7 @@ class YOLODetector:
             results = self.model.track(
                 source=frame,
                 persist=True,
-                tracker="botsort.yaml",
+                tracker=self.tracker_config_path,
                 conf=self.confidence_threshold,
                 device=self.device,
                 verbose=False,
@@ -133,11 +134,12 @@ class YOLODetector:
             self.active_trajectories = active_tracks_in_frame
 
             if self.detection_callback and detections:
-                for det in detections:
-                    self.detection_callback(det)
+                with self.app.app_context():
+                    for det in detections:
+                        self.detection_callback(det)
 
-            # 4. Retourner la copie propre sur laquelle nous avons dessiné.
             return clean_frame_for_drawing, detections
+        
         except Exception as e:
             print(f"❌ Error during detection: {e}")
             traceback.print_exc()
@@ -145,37 +147,51 @@ class YOLODetector:
 
     def _process_stream(self, stream_source, started_event):
         cap = None
+        print(f"--- [THREAD] Stream thread started for {stream_source} ---")
         try:
+            print("--- [THREAD] Attempting cv2.VideoCapture ---")
             cap = cv2.VideoCapture(stream_source)
+            
+            # --- POINT DE VÉRIFICATION CRUCIAL ---
             if not cap.isOpened():
-                raise ConnectionError(f"Failed to open video stream: {stream_source}")
+                print("--- [THREAD] ERROR: cap.isOpened() returned False. Cannot open stream. ---")
+                # On ne lève pas d'exception ici, on laisse le thread se terminer
+                # pour que le timeout de start_streaming se déclenche.
+            else:
+                print("--- [THREAD] SUCCESS: cap.isOpened() returned True. Entering main loop. ---")
+                self.is_running = True
+                self.current_video = stream_source
+                started_event.set() # On signale le succès IMMÉDIATEMENT
 
-            self.is_running = True
-            self.current_video = stream_source
-            started_event.set()
-            if ENABLE_LOGS: print(f"✅ Stream connected: {stream_source}")
+                while self.is_running:
+                    ret, frame = cap.read()
+                    if not ret:
+                        print("--- [THREAD] WARNING: cap.read() returned False. Stream ended or interrupted. ---")
+                        break # Sortir de la boucle while
 
-            while self.is_running:
-                ret, frame = cap.read()
-                if not ret:
-                    if ENABLE_LOGS: print("End of video or stream interrupted. Stopping.")
-                    break
+                    drawn_frame, _ = self._execute_detection(frame)
+                    
+                    try:
+                        self.frame_queue.put(drawn_frame, timeout=1)
+                    except queue.Full:
+                        print("--- [THREAD] WARNING: Frame queue is full, dropping frame. ---")
+                        continue
 
-                drawn_frame, _ = self._execute_detection(frame)
-                
-                if not self.frame_queue.full():
-                    self.frame_queue.put(drawn_frame)
-        
         except Exception as e:
-            if ENABLE_LOGS: print(f"❌ Stream error: {e}")
-            started_event.set()
+            print(f"--- [THREAD] CRITICAL ERROR in _process_stream thread: {e} ---")
+            traceback.print_exc()
         
         finally:
             self.is_running = False
-            self.current_video = None
             if cap:
                 cap.release()
-            if ENABLE_LOGS: print("🛑 Streaming finished")
+                print("--- [THREAD] Video capture released. ---")
+            
+            # S'assurer que l'événement est signalé même en cas d'erreur précoce
+            if not started_event.is_set():
+                started_event.set()
+                
+            print(f"--- [THREAD] Stream thread for {stream_source} is finishing. ---")
 
     def start_streaming(self, stream_source):
         if self.is_running:
@@ -189,18 +205,18 @@ class YOLODetector:
         self.seen_track_ids = set()
         self.active_trajectories = 0
 
-        if ENABLE_LOGS: print(f"▶️ Starting YOLO stream with source: {stream_source}")
-        
+        if self.ENABLE_LOGS: print(f"▶️ Starting YOLO stream with source: {stream_source}")
+
         started_event = threading.Event()
         thread = threading.Thread(target=self._process_stream, args=(stream_source, started_event))
         thread.daemon = True
         thread.start()
 
         if started_event.wait(timeout=10) and self.is_running:
-            if ENABLE_LOGS: print("✅ Stream successfully initialized.")
+            if self.ENABLE_LOGS: print("✅ Stream successfully initialized.")
             return thread
         else:
-            if ENABLE_LOGS: print("❌ Stream failed to start. Check video path and logs.")
+            if self.ENABLE_LOGS: print("❌ Stream failed to start. Check video path and logs.")
             self.is_running = False
             return None
 
@@ -225,12 +241,12 @@ class YOLODetector:
                     time.sleep(sleep_time)
             except queue.Empty:
                 if not self.is_running:
-                    if ENABLE_LOGS: print("Stream generation stopped.")
+                    if self.ENABLE_LOGS: print("Stream generation stopped.")
                     break
     
     def get_performance_metrics(self):
         try:
-            sys_metrics = system_monitor.get_metrics()
+            sys_metrics = self.system_monitor.get_metrics()
             object_count = sum(self.objects_by_class.values())
             
             metrics = {
@@ -255,5 +271,25 @@ class YOLODetector:
         if not os.path.exists(videos_dir): return []
         video_extensions = ['.mp4', '.avi', '.mov', '.mkv']
         return [os.path.join(videos_dir, f) for f in os.listdir(videos_dir) if any(f.lower().endswith(ext) for ext in video_extensions)]
+    
+    def get_model_info(self):
+        """Retourne des informations sur le modèle actuellement chargé."""
+        if self.model is None:
+            return {
+                "model_path": self.model_path,
+                "status": "Not loaded or failed to load.",
+                "confidence_threshold": self.confidence_threshold
+            }
+        
+        # 'self.model.names' est un dictionnaire des classes {index: nom}
+        class_names = list(self.model.names.values()) if hasattr(self.model, 'names') else []
+        
+        return {
+            "model_path": self.model_path,
+            "status": "Loaded successfully",
+            "device": str(self.device),
+            "confidence_threshold": self.confidence_threshold,
+            "class_count": len(class_names),
+            "class_names": class_names
+        }
 
-detector = YOLODetector()

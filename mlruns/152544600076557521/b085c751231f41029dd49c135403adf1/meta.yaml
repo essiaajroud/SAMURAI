@@ -1,0 +1,15 @@
+artifact_uri: file:///D:/samurai/SAMURAI/mlruns/152544600076557521/b085c751231f41029dd49c135403adf1/artifacts
+deleted_time: 1756296798305
+end_time: 1756294704815
+entry_point_name: ''
+experiment_id: '152544600076557521'
+lifecycle_stage: deleted
+run_id: b085c751231f41029dd49c135403adf1
+run_name: best e1 b4 aug
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1756294351800
+status: 4
+tags: []
+user_id: rteen

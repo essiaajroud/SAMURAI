@@ -1,0 +1,7 @@
+global:
+  scrape_interval: 15s # À quelle fréquence noter les constantes vitales
+
+scrape_configs:
+  - job_name: "samurai-backend"
+    static_configs:
+      - targets: ["host.docker.internal:5000"]

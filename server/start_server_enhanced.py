@@ -73,7 +73,7 @@ class ServerManager:
                 os.makedirs(config.YOLO_VIDEOS_DIR, exist_ok=True)
                 logger.info(f"📁 Videos directory created: {config.YOLO_VIDEOS_DIR}")
             # Start Flask server
-            from app import app
+            from server import app
             app.run(
                 host=config.HOST,
                 port=config.PORT,
@@ -111,7 +111,7 @@ class ServerManager:
             # Create instance folder if it doesn't exist
             os.makedirs('instance', exist_ok=True)
             # Import and initialize the database
-            from app import db
+            from server import db
             with app.app_context():
                 db.create_all()
             logger.info("✅ Database initialized.")

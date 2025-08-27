@@ -3,22 +3,28 @@ from ultralytics import YOLO
 import argparse
 import os
 import yaml
+import torch
 
-def train(epochs, batch_size, data_yaml_path, model_path_arg, args):
+def train(args):
     """
     Fonction pour entraîner un modèle YOLO avec des paramètres d'augmentation contrôlables,
     et suivre l'expérience complète avec MLflow.
     """
-    # --- 1. Validation des Chemins d'Entrée ---
+    epochs = args.epochs
+    batch_size = args.batch
+    data_yaml_path = args.data
+    model_path_arg = args.model
+    device = args.device # ex: 'cuda:0' ou 'cpu'
+
+    # --- 1. Validation des Chemins (plus de validation de device ici) ---
     print("--- Step 1: Validating input paths ---")
     if not os.path.exists(data_yaml_path):
         print(f"[ERROR] Data config file not found at: {data_yaml_path}")
         return
-
-    # Si le chemin du modèle de base ne se termine pas par .pt, on l'ajoute.
-    # Cela permet de passer soit 'yolov8s' soit 'path/to/model.pt'.
-    if not model_path_arg.endswith('.pt'):
-        model_path_arg += '.pt'
+    # # Si le chemin du modèle de base ne se termine pas par .pt, on l'ajoute.
+    # # Cela permet de passer soit 'yolov8s' soit 'path/to/model.pt'.
+    # if not model_path_arg.endswith('.pt'):
+    #     model_path_arg += '.pt'
 
     # Vérifier si le modèle de base existe (s'il s'agit d'un chemin local)
     if not os.path.exists(model_path_arg) and model_path_arg not in ['yolov11n.pt', 'yolov11s.pt', 'yolov11m.pt', 'yolov11l.pt', 'yolov11x.pt']:
@@ -54,6 +60,8 @@ def train(epochs, batch_size, data_yaml_path, model_path_arg, args):
             "epochs": epochs,
             "batch_size": batch_size,
             "image_size": 640,
+            "device": device,
+            "learning_rate": args.lr0,
             "data_yaml_path": data_yaml_path,
             "aug_degrees": args.degrees,
             "aug_translate": args.translate,
@@ -77,6 +85,8 @@ def train(epochs, batch_size, data_yaml_path, model_path_arg, args):
             epochs=epochs,
             imgsz=640,
             batch=batch_size,
+            device=device,
+            lr0=args.lr0,
             name=f'{os.path.basename(model_path_arg).replace(".pt","")}_run_{run_id}',
             degrees=args.degrees,
             translate=args.translate,
@@ -129,7 +139,8 @@ if __name__ == '__main__':
     parser.add_argument('--batch', type=int, default=8, help='Batch size for training.')
     parser.add_argument('--data', type=str, required=True, help='Path to the data.yaml file.')
     parser.add_argument('--model', type=str, default='yolov8s', help='Base YOLO model: name (e.g., yolov11m) or path to a local .pt file.')
-    
+    parser.add_argument('--lr', type=float, default=0.01, dest='lr0', help='Initial learning rate (e.g., 0.01).')
+    parser.add_argument('--device', type=str, default='cuda:0', help="Device to run on, e.g., 'cpu' or 'cuda:0'")
     # Arguments d'augmentation de données
     parser.add_argument('--degrees', type=float, default=0.0, help='Image rotation (+/- degrees).')
     parser.add_argument('--translate', type=float, default=0.1, help='Image translation (+/- fraction).')
@@ -140,4 +151,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     # Passer l'objet 'args' en entier pour que la fonction ait accès aux paramètres d'augmentation
-    train(args.epochs, args.batch, args.data, args.model, args)
+    train(args)

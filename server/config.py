@@ -6,7 +6,11 @@ All dynamic parameters are defined here for easy management.
 import os
 from datetime import timedelta
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+YOLO_TRACKER_CONFIG = os.path.join(BASE_DIR, 'botsort.yaml')
+
 class Config:
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'une-cle-secrete-difficile-a-deviner'
     """Base configuration for the server."""
     # Server configuration
     HOST = '0.0.0.0'
@@ -17,13 +21,13 @@ class Config:
 
     # Database configuration
     DATABASE_PATH = 'instance/detection_history.db'
-    SQLALCHEMY_DATABASE_URI = f'sqlite:///{DATABASE_PATH}'
+    SQLALCHEMY_DATABASE_URI = f"sqlite:///{os.path.join(BASE_DIR, 'instance', 'database.sqlite')}"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # YOLO configuration
-    YOLO_MODEL_PATH = 'models/best.onnx'
+    YOLO_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'best.onnx')
     YOLO_CONFIDENCE_THRESHOLD = 0.5
-    YOLO_VIDEOS_DIR = 'videos'
+    
 
     # Detection configuration
     DETECTION_CLEANUP_HOURS = 24  # Clean up detections after X hours
