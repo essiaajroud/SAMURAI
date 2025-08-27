@@ -30,7 +30,8 @@ jobs:
       # que DVC pourra trouver et utiliser.
       - name: Create DVC credentials file from secret
         # Cette étape ne s'exécute que si le secret existe
-        if: ${{ secrets.GDRIVE_CREDENTIALS_DATA != '' }}
+        # Ligne corrigée
+        if: ${{ secrets.GDRIVE_CREDENTIALS_DATA }}
         run: |
           # Crée le dossier de configuration de DVC s'il n'existe pas
           mkdir -p .dvc/tmp
