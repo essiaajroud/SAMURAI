@@ -56,11 +56,25 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
+      - name: Install DVC via pip
+        run: pip install "dvc[azure]"
+
       - name: Set up DVC
         uses: iterative/dvc-action@v1
 
-      - name: Pull data from DVC (Azure) remote
-        run: dvc pull -r myremote
+      - name: Initialize DVC and Pull Data
+        run: |
+          # Étape 1: Forcer la ré-initialisation de DVC dans ce répertoire
+          # --no-scm empêche de créer un nouveau .gitignore
+          dvc init --no-scm
+
+          # Étape 2: Configurer le remote en utilisant la variable d'environnement
+          # Cela va recréer la configuration dans .dvc/config à partir du secret
+          dvc remote add -d myremote azure://dvc-data --local
+          dvc remote modify myremote connection_string "$AZURE_STORAGE_CONNECTION_STRING" --local
+
+          # Étape 3: Maintenant, lancer le pull
+          dvc pull -r myremote
 
       - name: Install Python dependencies
         run: |
