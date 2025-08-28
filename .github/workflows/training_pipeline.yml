@@ -52,7 +52,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/server/requirements.txt') }}
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/server/requirements-ci.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
 
@@ -61,7 +61,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install "dvc[azure]"
           pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu121
-          pip install -r server/requirements.txt
+          pip install -r server/requirements-ci.txt
           pip install mlflow PyYAML
 
       - name: Pull data from DVC (Azure) remote
