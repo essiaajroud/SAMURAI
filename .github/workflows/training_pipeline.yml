@@ -29,6 +29,9 @@ jobs:
       - name: List files to debug directory structure
         run: ls -R
 
+      - name: List files to verify project root
+        run: ls -la
+
       - name: Free up disk space on the runner
         uses: easimon/maximize-build-space@v10
         with:
