@@ -2,46 +2,20 @@ name: YOLO Model Training Pipeline
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "dataset/**"
-      - "mlops/scripts/**"
-      - ".github/workflows/training_pipeline.yml"
 
 jobs:
   train-and-evaluate-model:
     runs-on: ubuntu-latest
 
     env:
-      GDRIVE_CREDENTIALS_DATA: ${{ secrets.GDRIVE_CREDENTIALS_DATA }}
+      AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
 
     steps:
       - name: Checkout repository code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-
-      - name: Set up DVC
-        uses: iterative/dvc-action@v1
-
-      - name: Create DVC credentials file from secret
-        if: env.GDRIVE_CREDENTIALS_DATA != ''
-        run: |
-          mkdir -p ~/.config/dvc
-          echo "$GDRIVE_CREDENTIALS_DATA" > ~/.config/dvc/gdrive-creds.json
-
-          # Configurer DVC pour utiliser ce fichier d'identifiants
-          dvc remote modify --local myremote gdrive_use_service_account true
-          dvc remote modify --local myremote gdrive_service_account_json_file_path ~/.config/dvc/gdrive-creds.json
-
-      - name: Pull data from DVC remote
-        if: env.GDRIVE_CREDENTIALS_DATA != ''
-        run: dvc pull -r dataset
+      - name: Pull data from DVC (Azure) remote
+        run: dvc pull -r myremote
 
       - name: Install Python dependencies
         run: |

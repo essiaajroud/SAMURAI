@@ -1,6 +1,5 @@
 [core]
-    remote = gdrive_remote
-['remote "gdrive_remote"']
-    url = gdrive://1XiuvVPexrbwvd8Ly6I5T_C6WtP30nnOK
-    gdrive_use_service_account = true
-    gdrive_service_account_json_file_path = C:\Users\rteen\Desktop\evaluation\samurai-mlops-dvc-01d075239f4f.json
+    remote = myremote
+['remote "myremote"']
+    url = azure://dvc-data
+    
