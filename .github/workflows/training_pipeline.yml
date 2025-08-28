@@ -15,6 +15,10 @@ jobs:
   train-and-evaluate-model:
     runs-on: ubuntu-latest
 
+    defaults:
+      run:
+        working-directory: ./
+
     env:
       AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
 
@@ -50,11 +54,8 @@ jobs:
       - name: Set up DVC
         uses: iterative/dvc-action@v1
 
-      # --- CORRECTIONS CI-DESSOUS ---
       - name: Pull data from DVC (Azure) remote
         run: dvc pull -r myremote
-        # Spécifier le répertoire de travail pour cette commande
-        working-directory: ./
 
       - name: Install Python dependencies
         run: |
@@ -62,26 +63,18 @@ jobs:
           pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu121
           pip install -r server/requirements.txt
           pip install mlflow PyYAML
-        working-directory: ./
 
       - name: Run model training script
         id: training_step
         run: |
           python mlops/scripts/train.py --epochs 10 --batch 8 --data dataset/samurai/data.yaml --model yolov11m
-        working-directory: ./
 
       - name: Compare new model with production model
         id: comparison_step
         run: |
-          # D'abord, capturer la sortie du script de train pour obtenir le Run ID
-          output_log=$(cat ${{ steps.training_step.outputs.stdout }})
-          run_id=$(echo "$output_log" | grep 'MLflow Run ID:' | awk '{print $4}')
-
-          # Ensuite, lancer la comparaison
-          python mlops/scripts/compare_models.py --run_id $run_id
+          python mlops/scripts/compare_models.py --run_id ${{ steps.training_step.outputs.run_id }}
           result=$(cat comparison_result.txt)
           echo "is_better=$result" >> $GITHUB_OUTPUT
-        working-directory: ./
 
       - name: Create GitHub Release with New Model
         if: ${{ steps.comparison_step.outputs.is_better == 'true' }}
@@ -93,12 +86,10 @@ jobs:
             New version of the YOLO model trained by GitHub Actions.
             - Run ID: ${{ steps.training_step.outputs.run_id }}
           files: |
-            ./runs/detect/**/weights/best.onnx
-        working-directory: ./
+            runs/detect/**/weights/best.onnx
 
       - name: Upload MLflow artifacts
         uses: actions/upload-artifact@v4
         with:
           name: mlflow-tracking-results
-          path: ./mlruns/
-        working-directory: ./
+          path: mlruns/
