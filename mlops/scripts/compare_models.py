@@ -2,7 +2,8 @@ import mlflow
 import argparse
 import os
 
-def compare_and_decide(new_run_id, model_name):
+#def compare_and_decide(new_run_id, model_name):
+def compare_and_promote(new_run_id, model_name):
     """
     Compare la performance d'un nouveau modèle (new_run_id) avec le modèle
     actuellement en production dans le MLflow Model Registry.
@@ -46,11 +47,40 @@ def compare_and_decide(new_run_id, model_name):
 
     # --- 3. Comparer et prendre une décision ---
     is_better = "false"
+    # if new_metric > production_metric:
+    #     print(f"Decision: New model is BETTER. (mAP {new_metric:.4f} > {production_metric:.4f})")
+    #     is_better = "true"
+    # else:
+    #     print(f"Decision: New model is NOT better. (mAP {new_metric:.4f} <= {production_metric:.4f})")
+    #     is_better = "false"
+        
+    # return is_better
     if new_metric > production_metric:
-        print(f"Decision: New model is BETTER. (mAP {new_metric:.4f} > {production_metric:.4f})")
+        print(f"Decision: New model is BETTER.")
         is_better = "true"
+        
+        # --- NOUVELLE ÉTAPE : Enregistrer et promouvoir le nouveau modèle ---
+        print(f"Registering new model from Run ID: {new_run_id}")
+        # Le chemin de l'artefact doit correspondre à celui dans train.py
+        model_uri = f"runs:/{new_run_id}/best_model_pt" 
+        registered_model = mlflow.register_model(model_uri, model_name)
+        
+        print(f"New model registered as Version: {registered_model.version}")
+        print("Promoting new version to 'Staging'...")
+        
+        # Attendre un peu que le modèle soit bien enregistré
+        import time
+        time.sleep(5)
+        
+        client.transition_model_version_stage(
+            name=model_name,
+            version=registered_model.version,
+            stage="Staging"
+        )
+        print("Model promoted to 'Staging' successfully.")
+        
     else:
-        print(f"Decision: New model is NOT better. (mAP {new_metric:.4f} <= {production_metric:.4f})")
+        print(f"Decision: New model is NOT better.")
         is_better = "false"
         
     return is_better
@@ -61,7 +91,8 @@ if __name__ == "__main__":
     parser.add_argument("--model_name", default="samurai-yolo-detector", help="Name of the model in the MLflow Registry")
     args = parser.parse_args()
     
-    is_better = compare_and_decide(args.run_id, args.model_name)
+    #is_better = compare_and_decide(args.run_id, args.model_name)
+    is_better = compare_and_promote(args.run_id, args.model_name)
     
     # C'est la partie clé pour GitHub Actions
     # On écrit la sortie dans un fichier que l'étape suivante pourra lire
