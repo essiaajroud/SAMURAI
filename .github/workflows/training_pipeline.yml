@@ -58,7 +58,7 @@ jobs:
           echo "🛑 Deployment skipped. The new model is not better than the production version."
 
       - name: Upload MLflow artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: mlflow-tracking-results
           path: mlruns/
