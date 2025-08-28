@@ -24,9 +24,11 @@ jobs:
 
       - name: Set up Python
         uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
 
-      - name: Pull data from DVC (Azure) remote
-        run: dvc pull -r myremote
+      - name: Set up DVC
+        uses: iterative/dvc-action@v1
 
       - name: Pull data from DVC (Azure) remote
         run: dvc pull -r myremote
