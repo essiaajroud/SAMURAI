@@ -1,5 +1,10 @@
 pipeline {
-    agent any // Exécuter sur n'importe quel "agent" Jenkins disponible
+     agent {
+        docker {
+            image 'python:3.11-slim' 
+            args '-u root' 
+        }
+    }
 
     environment {
         // Définir la variable d'environnement à partir des secrets Jenkins
@@ -17,18 +22,17 @@ pipeline {
         stage('Setup Environment') {
             steps {
                 echo 'Installing Python dependencies...'
-                // Assumer que le runner a Python. Pour plus de robustesse, on utiliserait un conteneur Docker.
-                sh 'python3 -m pip install --upgrade pip'
-                sh 'pip3 install -r server/requirements.txt'
-                sh 'pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121'
-                sh 'pip3 install mlflow PyYAML dvc[azure]'
+                sh 'pip --version' 
+                sh 'pip install --upgrade pip'
+                sh 'pip install -r server/requirements.txt'
+                sh 'pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu121'
+                sh 'pip install mlflow PyYAML dvc[azure]'
             }
         }
 
         stage('Pull Data') {
             steps {
                 echo 'Pulling data from DVC remote...'
-                // La variable d'environnement AZURE_STORAGE_CONNECTION_STRING est utilisée automatiquement
                 sh 'dvc pull -r myremote'
             }
         }
@@ -36,8 +40,7 @@ pipeline {
         stage('Train Model') {
             steps {
                 echo 'Running model training script...'
-                // On sauvegarde la sortie pour en extraire l'ID du run
-                sh 'python3 mlops/scripts/train.py --epochs 10 --batch 8 --data dataset/samurai/data.yaml --model yolov11m > training_output.log'
+                sh 'python mlops/scripts/train.py --epochs 10 --batch 8 --data dataset/samurai/data.yaml --model yolov11m > training_output.log'
             }
         }
 
@@ -53,7 +56,6 @@ pipeline {
 
                     if (isBetter == 'true') {
                         echo '🚀 DEPLOYMENT TRIGGERED! 🚀'
-                        // Ici, on pourrait déclencher un autre job de déploiement
                     } else {
                         echo '🛑 Deployment skipped. The new model is not better.'
                     }
