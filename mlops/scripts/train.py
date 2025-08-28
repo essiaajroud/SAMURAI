@@ -98,8 +98,8 @@ def train(args):
 
         # --- 5. Log des Métriques ---
         print("\n--- Step 5: Logging performance metrics ---")
-        final_map50_95 = results.metrics.get('metrics/mAP50-95(B)', 0)
-        final_map50 = results.metrics.get('metrics/mAP50(B)', 0)
+        final_map50_95 = results.metrics.box.map    
+        final_map50 = results.metrics.box.map50
         
         mlflow.log_metrics({
             "mAP50-95": final_map50_95,
