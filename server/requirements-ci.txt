@@ -1,0 +1,20 @@
+# Dépendances minimales pour le pipeline CI (entraînement)
+
+# Core ML & Data
+ultralytics==8.0.220
+# PyTorch, Torchvision, Torchaudio sont installés séparément dans le pipeline
+# pour garantir la bonne version avec support GPU.
+opencv-python-headless==4.8.1.78 # Version 'headless' plus légère, sans GUI
+Pillow==10.2.0
+numpy==1.26.3
+
+# MLOps Tools
+mlflow>=2.9,<3.0
+dvc[azure]>=3.0,<4.0 # Installe DVC avec le support Azure
+PyYAML>=6.0,<7.0
+
+# Utilitaires
+tqdm # Requis par Ultralytics
+# psutil n'est pas nécessaire pour le train.py
+# requests est souvent une dépendance implicite mais on peut l'ajouter par sécurité
+requests==2.31.0

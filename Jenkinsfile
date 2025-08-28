@@ -2,7 +2,7 @@ pipeline {
      agent {
         docker {
             image 'python:3.11-slim' 
-            args '-u root' 
+            args '-u root --entrypoint=""' 
         }
     }
 
@@ -19,14 +19,13 @@ pipeline {
             }
         }
 
-        stage('Setup Environment') {
+        stage('Install Dependencies') {
             steps {
-                echo 'Installing Python dependencies...'
-                sh 'pip --version' 
+                echo 'Installing CI dependencies inside the Docker agent...'
+                sh 'pip --version'
                 sh 'pip install --upgrade pip'
-                sh 'pip install -r server/requirements.txt'
                 sh 'pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu121'
-                sh 'pip install mlflow PyYAML dvc[azure]'
+                sh 'pip install -r server/requirements-ci.txt'
             }
         }
 
@@ -56,7 +55,7 @@ pipeline {
 
                     if (isBetter == 'true') {
                         echo '🚀 DEPLOYMENT TRIGGERED! 🚀'
-                    } else {
+                    } else {que pensez vous de specifier 
                         echo '🛑 Deployment skipped. The new model is not better.'
                     }
                 }
