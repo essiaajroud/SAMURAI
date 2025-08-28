@@ -2,6 +2,14 @@ name: YOLO Model Training Pipeline
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+      - test
+    paths:
+      - "dataset/**"
+      - "mlops/scripts/**"
+      - ".github/workflows/training_pipeline.yml"
 
 jobs:
   train-and-evaluate-model:
