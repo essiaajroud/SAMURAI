@@ -1,15 +1,19 @@
-version: '3.8'
+# On peut supprimer la version, comme le suggère l'avertissement
 services:
   jenkins:
-    image: jenkins/jenkins:lts-jdk11
+    # --- MODIFICATION CLÉ ---
+    # Au lieu de 'image:', on utilise 'build:'.
+    build: . # Le '.' signifie 'construire en utilisant le Dockerfile dans le dossier actuel'
     container_name: jenkins
+    
+    network_mode: "host"
+
     privileged: true
     user: root
-    ports:
-      - "8081:8080"
-      - "50000:50000"
+    
     volumes:
       - jenkins_data:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
+      
 volumes:
   jenkins_data: {}
