@@ -56,37 +56,21 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      - name: Install DVC via pip
-        run: pip install "dvc[azure]"
-
-      - name: Set up DVC
-        uses: iterative/dvc-action@v1
-
-      - name: Initialize DVC and Pull Data
-        run: |
-          # Étape 1: Forcer la ré-initialisation de DVC dans ce répertoire
-          # --no-scm empêche de créer un nouveau .gitignore
-          dvc init --no-scm
-
-          # Étape 2: Configurer le remote en utilisant la variable d'environnement
-          # Cela va recréer la configuration dans .dvc/config à partir du secret
-          dvc remote add -d myremote azure://dvc-data --local
-          dvc remote modify myremote connection_string "$AZURE_STORAGE_CONNECTION_STRING" --local
-
-          # Étape 3: Maintenant, lancer le pull
-          dvc pull -r myremote
-
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install "dvc[azure]"
           pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu121
           pip install -r server/requirements.txt
           pip install mlflow PyYAML
 
+      - name: Pull data from DVC (Azure) remote
+        run: dvc pull -r myremote
+
       - name: Run model training script
         id: training_step
         run: |
-          python mlops/scripts/train.py --epochs 10 --batch 8 --data dataset/samurai/data.yaml --model yolov11m
+          python mlops/scripts/train.py --epochs 10 --batch 8 --data dataset/samurai/data.yaml --model yolov8s
 
       - name: Compare new model with production model
         id: comparison_step
