@@ -14,8 +14,8 @@ def train(args):
     batch_size = args.batch
     data_yaml_path = args.data
     model_path_arg = args.model
-    device = args.device # ex: 'cuda:0' ou 'cpu'
-
+    device = args.device if args.device else None
+    print(f"Requested device: {args.device}. Effective device will be auto-selected by Ultralytics.")
     # --- 1. Validation des Chemins (plus de validation de device ici) ---
     print("--- Step 1: Validating input paths ---")
     if not os.path.exists(data_yaml_path):
