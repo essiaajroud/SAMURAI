@@ -72,7 +72,7 @@ pipeline {
             }
         }
 
-        tage('Deploy to Production') {
+        stage('Deploy to Production') {
             when { expression { readFile('comparison_result.txt').trim() == 'true' } }
             steps {
                 echo '🚀 DEPLOYMENT TRIGGERED! 🚀'
