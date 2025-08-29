@@ -92,7 +92,8 @@ def train(args):
             translate=args.translate,
             scale=args.scale,
             flipud=args.flipud,
-            mosaic=args.mosaic
+            mosaic=args.mosaic,
+            val=True,
         )
         print("Training finished.")
 

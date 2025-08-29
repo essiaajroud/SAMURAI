@@ -72,6 +72,25 @@ pipeline {
             }
         }
 
+        tage('Deploy to Production') {
+            when { expression { readFile('comparison_result.txt').trim() == 'true' } }
+            steps {
+                echo '🚀 DEPLOYMENT TRIGGERED! 🚀'
+                script {
+                    def output = readFile 'training_output.log'
+                    def runIdMatch = (output =~ /MLflow Run ID: (\S+)/)
+                    if (runIdMatch) {
+                        def runId = runIdMatch[0][1]
+                        
+                        sh "python mlops/scripts/deploy.py --run_id ${runId}"
+                    } else {
+                        echo "Skipping deployment, could not determine Run ID."
+                    }
+                }
+            }
+        }
+
+
         stage('Archive Artifacts') {
             steps {
                 echo 'Archiving MLflow results...'
