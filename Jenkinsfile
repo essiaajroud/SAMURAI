@@ -40,7 +40,7 @@ pipeline {
         stage('Train Model') {
             steps {
                 echo 'Running model training script...'
-                sh 'python mlops/scripts/train.py --epochs 10 --batch 8 --data dataset/samurai/data.yaml --model yolov11m | tee training_output.log'
+                sh 'python mlops/scripts/train.py --epochs 10 --batch 8 --data dataset/samurai/data.yaml --model server/models/best.pt | tee training_output.log'
             }
         }
 
