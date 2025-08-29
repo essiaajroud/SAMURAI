@@ -22,7 +22,7 @@ pipeline {
         stage('Install Dependencies') {
             steps {
                 echo 'Installing CI dependencies inside the Docker agent...'
-                sh 'apt-get update && apt-get install -y libgl1-mesa-glx'
+                sh 'apt-get update && apt-get install -y libgl1 libglib2.0-0'
                 sh 'pip --version'
                 sh 'pip install --upgrade pip'
                 sh 'pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu121'
