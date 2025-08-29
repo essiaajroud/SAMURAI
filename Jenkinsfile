@@ -49,15 +49,22 @@ pipeline {
                 echo 'Comparing new model with production...'
                 script {
                     def output = readFile 'training_output.log'
-                    def runId = (output =~ /MLflow Run ID: (\S+)/)[0][1]
+                    def matcher = (output =~ /MLflow Run ID: (\S+)/)
                     
-                    sh "python3 mlops/scripts/compare_models.py --run_id ${runId}"
-                    def isBetter = readFile('comparison_result.txt').trim()
+                    if (matcher.find()) {
+                        def runId = matcher[0][1]
+                        echo "Found MLflow Run ID: ${runId}"
+                        
+                        sh "python mlops/scripts/compare_models.py --run_id ${runId}"
+                        def isBetter = readFile('comparison_result.txt').trim()
 
-                    if (isBetter == 'true') {
-                        echo '🚀 DEPLOYMENT TRIGGERED! 🚀'
-                    } else {que pensez vous de specifier 
-                        echo '🛑 Deployment skipped. The new model is not better.'
+                        if (isBetter == 'true') {
+                            echo '🚀 DEPLOYMENT TRIGGERED! 🚀'
+                        } else {
+                            echo '🛑 Deployment skipped.'
+                        }
+                    } else {
+                        error("Could not find 'MLflow Run ID:' in the training output. The training script might have failed.")
                     }
                 }
             }
