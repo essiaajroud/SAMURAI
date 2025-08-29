@@ -34,6 +34,8 @@ pipeline {
             steps {
                 echo 'Pulling data from DVC remote...'
                 sh 'dvc pull -r myremote'
+                echo 'Listing files after DVC pull to verify paths...'
+                sh 'ls -R'
             }
         }
 
