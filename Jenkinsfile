@@ -43,8 +43,7 @@ pipeline {
 
         stage('Train Model') {
             steps {
-                echo 'Running model training script...'
-                sh 'python mlops/scripts/train.py --epochs 10 --batch 8 --data dataset/samurai/data.yaml --model server/models/best.pt | tee training_output.log'
+                sh 'python mlops/scripts/train.py --epochs 10 --batch 8 --data dataset/samurai/data.yaml --model server/models/best.pt --device cpu | tee training_output.log'
             }
         }
 
@@ -52,12 +51,12 @@ pipeline {
             steps {
                 echo 'Comparing new model with production...'
                 script {
-                    def output = readFile 'training_output.log'
-                    def runIdMatch = (output =~ /MLflow Run ID: (\S+)/)
-                    if (runIdMatch) {
-                        def runId = runIdMatch[0][1]
-                        echo "Found MLflow Run ID: ${runId}"
-                        
+                    def runId = sh(
+                        script: "grep 'MLflow Run ID:' training_output.log | sed 's/.*MLflow Run ID: //'",
+                        returnStdout: true
+                    ).trim()
+                    if (runId) {
+                       echo "Found MLflow Run ID: ${runId}"
                         sh "python mlops/scripts/compare_models.py --run_id ${runId}"
                         def isBetter = readFile('comparison_result.txt').trim()
 
