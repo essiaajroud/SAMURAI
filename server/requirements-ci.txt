@@ -1,7 +1,7 @@
 # Dépendances minimales pour le pipeline CI (entraînement)
 
 # Core ML & Data
-ultralytics==8.0.220
+ultralytics==8.3.187
 # PyTorch, Torchvision, Torchaudio sont installés séparément dans le pipeline
 # pour garantir la bonne version avec support GPU.
 opencv-python-headless==4.8.1.78 # Version 'headless' plus légère, sans GUI

@@ -21,6 +21,8 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
+                echo 'Installing OS and Python dependencies...'
+                sh 'apt-get update && apt-get install -y libgl1 libglib2.0-0 git'
                 echo 'Installing CI dependencies inside the Docker agent...'
                 sh 'apt-get update && apt-get install -y libgl1 libglib2.0-0'
                 sh 'pip --version'
@@ -51,10 +53,9 @@ pipeline {
                 echo 'Comparing new model with production...'
                 script {
                     def output = readFile 'training_output.log'
-                    def matcher = (output =~ /MLflow Run ID: (\S+)/)
-                    
-                    if (matcher.find()) {
-                        def runId = matcher[0][1]
+                    def runIdMatch = (output =~ /MLflow Run ID: (\S+)/)
+                    if (runIdMatch) {
+                        def runId = runIdMatch[0][1]
                         echo "Found MLflow Run ID: ${runId}"
                         
                         sh "python mlops/scripts/compare_models.py --run_id ${runId}"
