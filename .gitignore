@@ -35,3 +35,6 @@ allfiles/
 /dataset
 
 credentials.json
+
+*.cache
+

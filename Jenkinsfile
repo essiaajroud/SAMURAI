@@ -6,10 +6,25 @@ pipeline {
         }
     }
 
+    options {
+        skipDefaultCheckout true 
+    }
+
     environment {
-        // Définir la variable d'environnement à partir des secrets Jenkins
+    
         AZURE_STORAGE_CONNECTION_STRING = credentials('azure-storage-connection-string')
     }
+
+    stages {
+        stage('Prepare Workspace') {
+            steps {
+                echo 'Cleaning workspace...'
+                cleanWs()
+
+                echo 'Checking out repository code...'
+                checkout scm
+            }
+        }
 
     stages {
         stage('Checkout Code') {
