@@ -7,20 +7,19 @@ pipeline {
     }
 
     stages {
-        stage('Setup Workspace') {
+        stage('Prepare Workspace and Dependencies') {
             steps {
-                echo 'Cleaning workspace and checking out code...'
+                echo 'Cleaning workspace...'
                 cleanWs()
-                
-                sh 'git clone https://github.com/essiaajroud/SAMURAI.git .'
-                sh 'git checkout main' 
-            }
-        }
 
-        stage('Install Dependencies') {
-            steps {
-                echo 'Installing OS and Python dependencies...'
+                echo 'Installing OS dependencies (including Git)...'
                 sh 'apt-get update && apt-get install -y libgl1 libglib2.0-0 git'
+                
+                echo 'Checking out repository code...'
+                sh 'git clone https://github.com/essiaajroud/SAMURAI.git .'
+                sh 'git checkout main'
+
+                echo 'Installing Python dependencies...'
                 sh 'pip install --upgrade pip'
                 sh 'pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu121'
                 sh 'pip install -r requirements-ci.txt'
@@ -30,7 +29,6 @@ pipeline {
         stage('Pull Data') {
             steps {
                 echo 'Pulling data from DVC remote...'
-                
                 withCredentials([string(credentialsId: 'azure-storage-connection-string', variable: 'AZURE_CONN_STR')]) {
                     sh 'AZURE_STORAGE_CONNECTION_STRING=$AZURE_CONN_STR dvc pull -r myremote'
                 }
@@ -40,11 +38,9 @@ pipeline {
         stage('Train and Evaluate') {
             steps {
                 echo 'Running model training and comparison...'
-               
                 sh '''
                     #!/bin/bash
-                    set -e # Arrêter le script si une commande échoue
-
+                    set -e
                     echo "--- Running model training script ---"
                     python mlops/scripts/train.py --epochs 10 --batch 8 --data dataset/samurai/data.yaml --model server/models/best.pt --device cpu > training_output.log
                     
@@ -63,21 +59,18 @@ pipeline {
                     
                     if [ "$IS_BETTER" = "true" ]; then
                         echo "🚀 DEPLOYMENT SCRIPT WOULD RUN HERE! 🚀"
-                        # python mlops/scripts/deploy.py --run_id $RUN_ID
                     else
-                        echo "🛑 Deployment skipped. New model is not better than production."
+                        echo "🛑 Deployment skipped."
                     fi
                 '''
             }
         }
-    }
+    } 
 
     post {
         always {
-            steps {
-                echo 'Archiving MLflow results and logs...'
-                archiveArtifacts artifacts: 'mlruns/**, training_output.log, comparison_result.txt', followSymlinks: false, allowEmptyArchive: true
-            }
+            echo 'Archiving MLflow results and logs...'
+            archiveArtifacts artifacts: 'mlruns/**, training_output.log, comparison_result.txt', followSymlinks: false, allowEmptyArchive: true
         }
     } 
 } 
