@@ -6,21 +6,14 @@ pipeline {
         }
     }
 
-    options {
-        skipDefaultCheckout true
-    }
-
-    environment {
-        AZURE_STORAGE_CONNECTION_STRING = credentials('azure-storage-connection-string')
-    }
-
     stages {
-        stage('Prepare Workspace') {
+        stage('Setup Workspace') {
             steps {
-                echo 'Cleaning workspace...'
+                echo 'Cleaning workspace and checking out code...'
                 cleanWs()
-                echo 'Checking out repository code...'
-                checkout scm
+                
+                sh 'git clone https://github.com/essiaajroud/SAMURAI.git .'
+                sh 'git checkout main' 
             }
         }
 
@@ -37,56 +30,54 @@ pipeline {
         stage('Pull Data') {
             steps {
                 echo 'Pulling data from DVC remote...'
-                sh 'dvc pull -r myremote'
+                
+                withCredentials([string(credentialsId: 'azure-storage-connection-string', variable: 'AZURE_CONN_STR')]) {
+                    sh 'AZURE_STORAGE_CONNECTION_STRING=$AZURE_CONN_STR dvc pull -r myremote'
+                }
             }
         }
 
-        stage('Train Model') {
+        stage('Train and Evaluate') {
             steps {
-                echo 'Running model training script...'
-                sh 'python mlops/scripts/train.py --epochs 10 --batch 8 --data dataset/samurai/data.yaml --model server/models/best.pt --device cpu | tee training_output.log'
-            }
-        }
+                echo 'Running model training and comparison...'
+               
+                sh '''
+                    #!/bin/bash
+                    set -e # Arrêter le script si une commande échoue
 
-        stage('Evaluate & Compare') {
-            steps {
-                echo 'Comparing new model with production...'
-                script {
-                    def output = readFile 'training_output.log'
-                    def runId = (output =~ /MLflow Run ID: (\S+)/).find() ? (output =~ /MLflow Run ID: (\S+)/)[0][1] : null
+                    echo "--- Running model training script ---"
+                    python mlops/scripts/train.py --epochs 10 --batch 8 --data dataset/samurai/data.yaml --model server/models/best.pt --device cpu > training_output.log
                     
-                    if (runId) {
-                        echo "Found MLflow Run ID: ${runId}"
-                        sh "python mlops/scripts/compare_models.py --run_id ${runId}"
-                    } else {
-                        error("Could not find 'MLflow Run ID:' in the training output. The training script likely failed.")
-                    }
-                }
+                    echo "--- Comparing new model with production ---"
+                    RUN_ID=$(grep 'MLflow Run ID:' training_output.log | sed 's/.*MLflow Run ID: //')
+                    
+                    if [ -z "$RUN_ID" ]; then
+                        echo "ERROR: Could not find MLflow Run ID in logs."
+                        exit 1
+                    fi
+                    
+                    echo "Found MLflow Run ID: $RUN_ID"
+                    python mlops/scripts/compare_models.py --run_id $RUN_ID
+                    
+                    IS_BETTER=$(cat comparison_result.txt)
+                    
+                    if [ "$IS_BETTER" = "true" ]; then
+                        echo "🚀 DEPLOYMENT SCRIPT WOULD RUN HERE! 🚀"
+                        # python mlops/scripts/deploy.py --run_id $RUN_ID
+                    else
+                        echo "🛑 Deployment skipped. New model is not better than production."
+                    fi
+                '''
             }
         }
-
-        stage('Deploy if Better') {
-            steps {
-                script {
-                    def isBetter = readFile('comparison_result.txt').trim()
-                    if (isBetter == 'true') {
-                        echo '🚀 DEPLOYMENT SCRIPT WOULD RUN HERE! 🚀'
-                       
-                    } else {
-                        echo '🛑 Deployment skipped. New model is not better than production.'
-                    }
-                }
-            }
-        }
-    } 
+    }
 
     post {
         always {
             steps {
-                echo 'Archiving MLflow results...'
-                archiveArtifacts artifacts: 'mlruns/**', followSymlinks: false, allowEmptyArchive: true
+                echo 'Archiving MLflow results and logs...'
+                archiveArtifacts artifacts: 'mlruns/**, training_output.log, comparison_result.txt', followSymlinks: false, allowEmptyArchive: true
             }
         }
     } 
-
 } 
