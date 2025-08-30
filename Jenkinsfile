@@ -2,7 +2,7 @@ pipeline {
     agent {
         docker {
             image 'python:3.11-slim'
-            args '-u root --entrypoint="" --network=host --memory=8g'
+            args '-u root --entrypoint="" --network=host --memory=8g --memory-swap -1'
         }
     }
 
@@ -41,8 +41,8 @@ pipeline {
                 sh '''
                     #!/bin/bash
                     set -e
-                    echo "--- Running model training script ---"
-                    python mlops/scripts/train.py --epochs 10 --batch 8 --data dataset/samurai/data.yaml --model server/models/best.pt --device cpu > training_output.log
+                    echo "--- Running model training script (CI MODE) ---"
+                    python mlops/scripts/train.py --epochs 2 --batch 2 --data dataset/samurai/data.yaml --model server/models/best.pt --device cpu > training_output.log
                     
                     echo "--- Comparing new model with production ---"
                     RUN_ID=$(grep 'MLflow Run ID:' training_output.log | sed 's/.*MLflow Run ID: //')
