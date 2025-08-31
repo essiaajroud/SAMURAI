@@ -92,7 +92,7 @@ pipeline {
     post {
         always {
             echo 'Archiving build artifacts...'
-            archiveArtifacts artifacts: 'mlruns/**, training_output.log, comparison_result.txt, README.md, docs/USAGE_GUIDE.md', followSymlinks: false, allowEmptyArchive: true
+            archiveArtifacts artifacts: 'mlruns/**, training_output.log, comparison_result.txt', followSymlinks: false, allowEmptyArchive: true
         }
     }
 }
