@@ -73,6 +73,9 @@ class Config:
     DETECTION_CACHE_TTL_SECONDS = 60
     STATISTICS_CACHE_TTL_SECONDS = 30
 
+    # ReID configuration
+    WITH_REID = True  # Active le modèle ReID si True
+
     @classmethod
     def get_detection_filters(cls):
         """Return default detection filters."""
@@ -134,4 +137,4 @@ def get_config():
     elif env == 'testing':
         return TestingConfig
     else:
-        return DevelopmentConfig 
+        return DevelopmentConfig

@@ -26,7 +26,7 @@ function App() {
   const [modelMetricsHistory, setModelMetricsHistory] = useState([]);
   const [systemMetricsHistory, setSystemMetricsHistory] = useState([]);
   const [alerts, setAlerts] = useState([]);
-
+  const [liveTrajectories, setLiveTrajectories] = useState({});
   // Logique de fetch et effets secondaires (inchangés, ils sont corrects)
   const fetchData = useCallback(async (endpoint) => {
     try {
@@ -54,7 +54,7 @@ function App() {
       fetchData('detections?timeRange=24h').then(data => setDetectionHistory(data || []));
       fetchData('logs').then(data => setLogs(data?.logs || []));
       fetchData('alerts').then(data => setAlerts(data?.alerts || []));
-
+      fetchData('trajectories').then(data => setLiveTrajectories(data || {}));
       if (isDetectionStarted) {
         fetchData('detections/current').then(data => setCurrentDetections(data?.detections || []));
         fetchData('performance').then(data => {
@@ -145,6 +145,7 @@ function App() {
         <div className="map-section">
           <TrackingMap
             detections={currentDetections}
+            trajectoryHistory={liveTrajectories}
             isConnected={isConnected}
             mapCenter={roverLocation}
             zoomLevel={15}

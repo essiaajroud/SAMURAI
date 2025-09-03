@@ -10,6 +10,7 @@ import threading
 import queue
 import numpy as np
 import traceback
+import torchreid  # AJOUT : Import torchreid
 
 
 class YOLODetector:
@@ -28,6 +29,8 @@ class YOLODetector:
         self.model_path = self.config.get('YOLO_MODEL_PATH')
         self.confidence_threshold = self.config.get('YOLO_CONFIDENCE_THRESHOLD')
         self.tracker_config_path = self.config.get('YOLO_TRACKER_CONFIG', 'botsort.yaml')
+        self.with_reid = self.config.get('WITH_REID', False)
+        self.reid_model = None
         if self.ENABLE_LOGS:
             print(f"🔧 Initializing YOLO detector on {self.device}")
             if gpu_config.gpu_available:
@@ -48,6 +51,8 @@ class YOLODetector:
 
         #self.onnx_providers = system_monitor.onnx_providers
         self.load_model()
+        if self.with_reid:
+            self.load_reid_model()
 
     def load_model(self):
         if not os.path.exists(self.model_path):
@@ -59,6 +64,21 @@ class YOLODetector:
         except Exception as e:
             if self.ENABLE_LOGS: print(f"❌ Error loading model: {e}")
             self.model = None
+
+    def load_reid_model(self):
+        """Initialise le modèle ReID pré-entraîné si demandé."""
+        try:
+            self.reid_model = torchreid.models.build_model(
+                name='osnet_x1_0',
+                num_classes=1000,      # AJOUT : paramètre requis pour le modèle pré-entraîné
+                pretrained=True
+            )
+            self.reid_model.eval()
+            if self.ENABLE_LOGS:
+                print("✅ ReID model 'osnet_x1_0' loaded (pretrained).")
+        except Exception as e:
+            print(f"❌ Error loading ReID model: {e}")
+            self.reid_model = None
 
     def set_detection_callback(self, callback):
         self.detection_callback = callback
@@ -74,15 +94,23 @@ class YOLODetector:
         try:
             clean_frame_for_drawing = frame.copy()
             start_time = time.perf_counter()
-            results = self.model.track(
-                source=frame,
-                persist=True,
-                tracker=self.tracker_config_path,
-                conf=self.confidence_threshold,
-                device=self.device,
-                verbose=False,
-                plots=False
-            )
+            
+            # Correction : NE PAS passer reid_model à tracker_args
+            tracker_args = {
+                'source': frame,
+                'persist': True,
+                'tracker': self.tracker_config_path,
+                'conf': self.confidence_threshold,
+                'device': self.device,
+                'verbose': False,
+                'plots': False
+            }
+            # SUPPRIMER :
+            # if self.with_reid and self.reid_model is not None:
+            #     tracker_args['reid_model'] = self.reid_model
+
+            results = self.model.track(**tracker_args)
+            
             if self.device.type == 'cuda':
                 torch.cuda.synchronize()
             end_time = time.perf_counter()
