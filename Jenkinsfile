@@ -387,7 +387,8 @@ pipeline {
     }
 
     post {
-        always {
+    always {
+        script {
             echo 'Archiving all relevant artifacts...'
             archiveArtifacts artifacts: '''
                 mlruns/**,
@@ -405,18 +406,25 @@ pipeline {
             ''', followSymlinks: false, allowEmptyArchive: true
             
             echo 'Cleaning up temporary MLflow download directory if it exists...'
-            sh 'rm -rf mlflow_model_for_test || true' # '|| true' prevents failure if dir doesn't exist
+            sh 'rm -rf mlflow_model_for_test || true'
             
             echo '--- Pipeline Finished ---'
         }
-        success {
+    }
+    success {
+        script {
             echo '✅ Pipeline completed successfully!'
         }
-        failure {
+    }
+    failure {
+        script {
             echo '❌ Pipeline failed. Check logs for details.'
         }
-        unstable {
+    }
+    unstable {
+        script {
             echo '⚠️ Pipeline completed with some warnings/unstable results.'
         }
     }
+}
 }
