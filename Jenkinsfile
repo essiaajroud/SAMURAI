@@ -1,23 +1,50 @@
+// Jenkinsfile - Complete MLOps Pipeline for SAMURAI Project
+
 pipeline {
     agent {
         docker {
             // Utiliser une image avec CUDA pour le GPU
-            image 'nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04'
+            // Cette image doit inclure CUDA, cuDNN et un environnement Python.
+            // Assurez-vous qu'elle est compatible avec votre version de GPU et de PyTorch.
+            image 'nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04' 
             args '''
                 --user root 
                 --gpus all 
                 --shm-size=8g 
                 --entrypoint=""
             '''
-            // Alternative si vous n'avez pas de GPU : gardez python:3.11 mais optimisez les paramètres
+            // Alternative si vous n'avez pas de GPU :
+            // image 'python:3.11-slim' 
+            // args '--user root --entrypoint=""' // Pas de --gpus all
         }
     }
 
     environment {
-        AZURE_STORAGE_CONNECTION_STRING = credentials('azure-storage-connection-string')
-        DVC_REMOTE_URL = 'your-dvc-remote-url-if-needed'
-        // Forcer l'utilisation du GPU si disponible
-        CUDA_VISIBLE_DEVICES = '0'
+        // Variables d'environnement Jenkins. Utilisez 'credentials' pour les secrets.
+        AZURE_STORAGE_ACCOUNT = credentials('azure-storage-account-name') // Example: 'mystorageaccount'
+        AZURE_STORAGE_KEY = credentials('azure-storage-key') // Example: The access key for your storage account
+
+        DVC_REMOTE_URL = 'azure://samuraidatastore/samurai-data' // Remplacez par votre URL DVC Azure Blob Storage
+        
+        // MLflow Tracking URI local (fichier)
+        MLFLOW_TRACKING_URI = "file://${workspace}/mlruns"
+
+        // Forcer l'utilisation du GPU si disponible.
+        CUDA_VISIBLE_DEVICES = '0' 
+        
+        // Variables pour le suivi de l'exécution du pipeline
+        TRAINING_RUN_ID = '' 
+        MODEL_PROMOTED_TO_STAGING = 'false' // Initialisé à 'false'
+
+        // Chemins principaux des données
+        DATA_YAML_PATH = 'dataset/samurai/data.yaml' 
+        
+        // Chemin pour simuler les données d'inférence en production pour la détection de dérive.
+        // C'est ici que votre service de production stockerait les images traitées.
+        // Pour un test, cela peut être un sous-ensemble de vos images de validation.
+        PRODUCTION_INFERENCE_DATA_PATH = 'dataset/samurai/val/images' 
+        
+        MODEL_NAME = 'samurai-yolo-detector' // Nom de votre modèle dans le registre MLflow
     }
 
     stages {
@@ -26,14 +53,20 @@ pipeline {
                 echo 'Cleaning workspace...'
                 cleanWs()
 
-                echo 'Installing Git and Python...'
+                echo 'Installing OS-level dependencies (Git, Python essentials, etc.)...'
                 sh '''
-                    apt-get update && apt-get install -y \
+                    apt-get update && apt-get install -y --no-install-recommends \
                         git \
                         python3 \
                         python3-pip \
                         libgl1 \
-                        libglib2.0-0
+                        libglib2.0-0 \
+                        time \
+                        bash \
+                        curl # Added curl for potential dvc remote needs if it uses HTTPS
+                    
+                    # Ensure /bin/sh points to bash for consistent script execution
+                    ln -sf /bin/bash /bin/sh
                 '''
                 
                 echo 'Cloning repository...'
@@ -44,30 +77,40 @@ pipeline {
             }
         }
 
-        stage('Check GPU Availability') {
+        stage('Check Environment & GPU') {
             steps {
-                echo 'Checking hardware configuration...'
+                echo 'Checking hardware configuration and Python environment...'
                 sh '''
                     echo "=== GPU Check ==="
-                    nvidia-smi || echo "No GPU detected - will use CPU"
+                    # `nvidia-smi` might not be in PATH inside the container by default.
+                    # Try common locations, or just run it and let it fail if not found.
+                    if command -v nvidia-smi &> /dev/null; then
+                        nvidia-smi || echo "No GPU detected or nvidia-smi failed to execute (permissions?)."
+                    else
+                        echo "nvidia-smi command not found. Assuming no NVIDIA GPU or drivers."
+                    fi
                     
                     echo "=== CPU Info ==="
-                    lscpu | grep -E "^CPU\\(s\\):|Model name:"
+                    lscpu | grep -E "^CPU\\(s\\):|Model name:" || true # `|| true` prevents pipeline failure if command is missing
                     
                     echo "=== Memory Info ==="
-                    free -h
+                    free -h || true
+                    
+                    echo "=== Disk Space ==="
+                    df -h . || true
                 '''
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Install Python Dependencies') {
             steps {
                 echo 'Installing Python packages...'
                 sh '''
                     python3 -m pip install --upgrade pip
                     
                     # Détection automatique GPU/CPU pour PyTorch
-                    if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
+                    # Utiliser une vérification plus robuste pour CUDA
+                    if python3 -c "import torch; print(torch.cuda.is_available())" | grep -q "True"; then
                         echo "Installing PyTorch with CUDA support..."
                         pip3 install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu121
                     else
@@ -75,123 +118,277 @@ pipeline {
                         pip3 install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cpu
                     fi
                     
+                    # Installer les autres dépendances
                     pip3 install -r server/requirements-ci.txt
+                    
+                    # Installer Evidently AI pour la détection de dérive de données
+                    pip3 install evidently
                 '''
                 
                 echo 'Verifying PyTorch installation...'
                 sh '''
                     python3 -c "
-import torch
-print(f'PyTorch version: {torch.__version__}')
-print(f'CUDA available: {torch.cuda.is_available()}')
-if torch.cuda.is_available():
-    print(f'CUDA version: {torch.version.cuda}')
-    print(f'GPU count: {torch.cuda.device_count()}')
-    print(f'GPU name: {torch.cuda.get_device_name(0)}')
-else:
-    print('Running on CPU')
-    "
+                    import torch
+                    print(f'PyTorch version: {torch.__version__}')
+                    print(f'CUDA available: {torch.cuda.is_available()}')
+                    if torch.cuda.is_available():
+                        print(f'CUDA version: {torch.version.cuda}')
+                        print(f'GPU count: {torch.cuda.device_count()}')
+                        print(f'GPU name: {torch.cuda.get_device_name(0)}')
+                    else:
+                        print('Running on CPU')
+                    "
                 '''
             }
         }
 
-        stage('Pull Data') {
+        stage('Pull Data (DVC)') {
             steps {
                 echo 'Pulling data from DVC remote...'
-                sh 'dvc pull -r myremote'
+                // Configure DVC for Azure Blob Storage
+                sh """
+                    dvc remote modify myremote azure_account_name "${env.AZURE_STORAGE_ACCOUNT}"
+                    dvc remote modify myremote azure_account_key "${env.AZURE_STORAGE_KEY}"
+                    dvc remote modify myremote url "${env.DVC_REMOTE_URL}"
+                    dvc pull -r myremote
+                """
+                sh 'ls -l ${DATA_YAML_PATH} || echo "WARNING: ${DATA_YAML_PATH} not found after DVC pull!"'
             }
         }
 
-        stage('Train and Evaluate') {
+        stage('Train Model') {
             steps {
-                echo 'Running optimized model training...'
-                sh '''
-                    #!/bin/bash
-                    set -e
+                script {
+                    echo 'Running optimized model training...'
+                    sh '''
+                        #!/bin/bash
+                        set -e # Exit immediately if a command exits with a non-zero status
 
-                    echo "--- Detecting optimal device ---"
-                    # Détection automatique GPU/CPU
-                    if python3 -c "import torch; exit(0 if torch.cuda.is_available() else 1)"; then
-                        DEVICE="cuda:0"
-                        BATCH_SIZE=16  # Batch plus grand avec GPU
-                        echo "✅ GPU detected - using device: $DEVICE with batch size: $BATCH_SIZE"
-                    else
-                        DEVICE="cpu"
-                        BATCH_SIZE=4   # Batch réduit pour CPU mais pas trop petit
-                        echo "⚠️ No GPU - using device: $DEVICE with batch size: $BATCH_SIZE"
-                        echo "WARNING: Training on CPU will be MUCH slower!"
-                    fi
+                        echo "--- Detecting optimal device for training ---"
+                        # Use Python to check CUDA availability
+                        if python3 -c "import torch; exit(0 if torch.cuda.is_available() else 1)"; then
+                            DEVICE="cuda:0"
+                            BATCH_SIZE=16  # Larger batch size for GPU
+                            echo "✅ GPU detected - using device: $DEVICE with batch size: $BATCH_SIZE"
+                        else
+                            DEVICE="cpu"
+                            BATCH_SIZE=4   # Reduced batch size for CPU
+                            echo "⚠️ No GPU detected - using device: $DEVICE with batch size: $BATCH_SIZE"
+                            echo "WARNING: Training on CPU will be significantly slower!"
+                        fi
 
-                    echo "--- Starting training with monitoring ---"
-                    # Ajouter time pour mesurer la durée
-                    time python3 mlops/scripts/train.py \
-                        --epochs 2 \
-                        --batch $BATCH_SIZE \
-                        --data dataset/samurai/data.yaml \
-                        --model server/models/best.pt \
-                        --device $DEVICE \
-                        --workers 4 \
-                        | tee training_output.log
+                        echo "--- Starting training with MLflow logging ---"
+                        # The `mlops/scripts/train.py` script should implicitly use MLflow.
+                        # `time` command measures execution time. `tee` logs to file and stdout.
+                        time python3 mlops/scripts/train.py \
+                            --epochs 2 \
+                            --batch $BATCH_SIZE \
+                            --data ${DATA_YAML_PATH} \
+                            --model yolov11s.pt \
+                            --device $DEVICE \
+                            --workers 4 \
+                            | tee training_output.log
 
-                    TRAIN_EXIT_CODE=${PIPESTATUS[0]}
-                    
-                    # Extraire les métriques de temps
-                    echo "--- Training Performance Summary ---"
-                    grep -E "(epoch|GPU|time|mAP)" training_output.log | tail -20
-                    
-                    if [ $TRAIN_EXIT_CODE -ne 0 ]; then
-                        echo "ERROR: Training failed with exit code $TRAIN_EXIT_CODE"
-                        exit $TRAIN_EXIT_CODE
-                    fi
+                        TRAIN_EXIT_CODE=${PIPESTATUS[0]} # Get exit code of the python command
 
-                    echo "--- Model comparison ---"
-                    RUN_ID=$(grep 'MLflow Run ID:' training_output.log | head -1 | sed 's/.*MLflow Run ID: //')
-                    
-                    if [ -z "$RUN_ID" ]; then
-                        echo "ERROR: Could not find MLflow Run ID"
+                        if [ $TRAIN_EXIT_CODE -ne 0 ]; then
+                            echo "ERROR: Model training script failed with exit code $TRAIN_EXIT_CODE."
+                            cat training_output.log
+                            exit $TRAIN_EXIT_CODE # Fail the Jenkins stage
+                        fi
+
+                        echo "--- Extracting MLflow Run ID from training logs ---"
+                        # Extract the MLflow Run ID, assuming it's printed in 'training_output.log'
+                        RUN_ID_FROM_LOG=$(grep 'MLflow Run ID:' training_output.log | head -1 | sed 's/.*MLflow Run ID: //')
+                        
+                        if [ -z "$RUN_ID_FROM_LOG" ]; then
+                            echo "ERROR: Could not find MLflow Run ID in training_output.log."
+                            exit 1
+                        fi
+                        echo "Found MLflow Run ID: $RUN_ID_FROM_LOG"
+                        env.TRAINING_RUN_ID = "$RUN_ID_FROM_LOG" # Set Jenkins environment variable
+                    '''
+                }
+            }
+        }
+
+        stage('Comprehensive Model Tests') {
+            steps {
+                script {
+                    echo 'Running comprehensive model validation tests using mlops/scripts/test_model.py...'
+                    if ("${env.TRAINING_RUN_ID}" == "") {
+                        echo "ERROR: TRAINING_RUN_ID is empty. Cannot run comprehensive model tests."
                         exit 1
-                    fi
+                    }
 
-                    echo "MLflow Run ID: $RUN_ID"
-                    python3 mlops/scripts/compare_models.py --run_id "$RUN_ID" > comparison_result.txt 2>&1
-                    
-                    IS_BETTER=$(cat comparison_result.txt | tr -d '\n\r')
-                    
-                    if [ "$IS_BETTER" = "true" ]; then
-                        echo "🚀 New model is better - Deployment would be triggered!"
-                    else
-                        echo "🛑 New model is not better - Deployment skipped"
-                    fi
-                '''
+                    echo "--- Downloading best.pt model artifact from MLflow Run ID: ${env.TRAINING_RUN_ID} ---"
+                    # Configure MLflow client to download the model
+                    sh """
+                        #!/bin/bash
+                        set -e
+                        export MLFLOW_TRACKING_URI="${env.MLFLOW_TRACKING_URI}"
+                        
+                        MLFLOW_DOWNLOAD_DIR="mlflow_model_for_test"
+                        mkdir -p "\${MLFLOW_DOWNLOAD_DIR}"
+
+                        mlflow artifacts download --run-id "${env.TRAINING_RUN_ID}" --artifact-path "best_model_pt" --dst-path "\${MLFLOW_DOWNLOAD_DIR}"
+                        
+                        MODEL_TO_TEST_PATH="\${MLFLOW_DOWNLOAD_DIR}/best_model_pt/best.pt"
+                        if [ ! -f "\${MODEL_TO_TEST_PATH}" ]; then
+                            echo "ERROR: best.pt model artifact not found at \${MODEL_TO_TEST_PATH} after download."
+                            exit 1
+                        fi
+                        echo "Model downloaded for testing: \${MODEL_TO_TEST_PATH}"
+
+                        echo "--- Executing test_model.py ---"
+                        python3 mlops/scripts/test_model.py \
+                            --model_path "\${MODEL_TO_TEST_PATH}" \
+                            --test_data_path "${env.DATA_YAML_PATH}" \
+                            | tee model_test_report.log
+                        
+                        TEST_SCRIPT_EXIT_CODE=${PIPESTATUS[0]}
+
+                        if [ $TEST_SCRIPT_EXIT_CODE -ne 0 ]; then
+                            echo "ERROR: Comprehensive model tests failed with exit code $TEST_SCRIPT_EXIT_CODE."
+                            cat model_test_report.log
+                            exit $TEST_SCRIPT_EXIT_CODE
+                        fi
+                        echo "✅ Comprehensive model tests PASSED."
+                    """
+                    archiveArtifacts artifacts: 'model_test_report.log, model_test_report.json', followSymlinks: false, allowEmptyArchive: true
+                }
             }
         }
 
-        stage('Collect Results') {
+        stage('Data Drift Detection') {
             steps {
-                echo 'Collecting training results...'
-                sh '''
-                    echo "=== Training Results Location ==="
-                    
-                    # Afficher l'emplacement des modèles
-                    echo "--- YOLO Models ---"
-                    find . -name "*.pt" -o -name "*.onnx" | grep -E "(runs|mlruns)" | head -10
-                    
-                    echo "--- Training Metrics ---"
-                    find . -name "results.csv" -o -name "*.png" | grep -E "(runs|mlruns)" | head -10
-                    
-                    # Afficher les métriques finales si disponibles
-                    if [ -f training_output.log ]; then
-                        echo "--- Final Metrics ---"
-                        grep -E "mAP|epoch" training_output.log | tail -5
-                    fi
-                '''
+                script {
+                    echo 'Collecting production inference data and checking for drift using Evidently AI...'
+                    # The `detect_data_drift.py` script will handle its own MLflow logging.
+                    # It needs the path to the training data (reference) and a path to some "production-like" data.
+                    # Assuming `PRODUCTION_INFERENCE_DATA_PATH` contains images.
+
+                    sh """
+                        #!/bin/bash
+                        set -e
+                        export MLFLOW_TRACKING_URI="${env.MLFLOW_TRACKING_URI}"
+
+                        # Run the data drift detection script
+                        python3 mlops/scripts/detect_data_drift.py \
+                            --reference_data_path "${env.DATA_YAML_PATH}" \
+                            --production_data_path "${env.PRODUCTION_INFERENCE_DATA_PATH}" \
+                            --output_report_path "data_drift_report.html" \
+                            --run_id "${env.TRAINING_RUN_ID}" \
+                            | tee data_drift_output.log
+
+                        DRIFT_EXIT_CODE=${PIPESTATUS[0]}
+
+                        if [ $DRIFT_EXIT_CODE -ne 0 ]; then
+                            echo "ERROR: Data drift detection failed with exit code $DRIFT_EXIT_CODE."
+                            cat data_drift_output.log
+                            # Decide if drift failure should fail the pipeline.
+                            # For now, we'll just log it. You might want to 'exit $DRIFT_EXIT_CODE' here
+                            # if critical drift should stop deployment.
+                            # exit $DRIFT_EXIT_CODE
+                        fi
+                        echo "✅ Data drift detection completed. Check data_drift_report.html for details."
+                    """
+                    archiveArtifacts artifacts: 'data_drift_report.html, data_drift_output.log', followSymlinks: false, allowEmptyArchive: true
+                }
+            }
+        }
+
+        stage('Compare & Promote to Staging') {
+            steps {
+                script {
+                    echo 'Comparing new model with current production candidate and promoting to Staging if better...'
+                    if ("${env.TRAINING_RUN_ID}" == "") {
+                        echo "ERROR: TRAINING_RUN_ID is empty. Cannot compare models."
+                        exit 1
+                    }
+
+                    sh """
+                        #!/bin/bash
+                        set -e
+                        export MLFLOW_TRACKING_URI="${env.MLFLOW_TRACKING_URI}"
+                        
+                        echo "--- Running compare_models.py ---"
+                        # The script outputs "true" if promoted, "false" otherwise.
+                        python3 mlops/scripts/compare_models.py \
+                            --run_id "${env.TRAINING_RUN_ID}" \
+                            --model_name "${env.MODEL_NAME}" \
+                            | tee comparison_result.log
+
+                        COMPARE_EXIT_CODE=${PIPESTATUS[0]}
+                        
+                        if [ $COMPARE_EXIT_CODE -ne 0 ]; then
+                            echo "ERROR: Model comparison script failed with exit code $COMPARE_EXIT_CODE."
+                            cat comparison_result.log
+                            exit $COMPARE_EXIT_CODE
+                        fi
+                        
+                        # Extract the last line of the output, which should be 'true' or 'false'
+                        IS_PROMOTED=$(tail -n 1 comparison_result.log | tr -d '[:space:]')
+                        
+                        if [ "$IS_PROMOTED" = "true" ]; then
+                            echo "🚀 New model is better and PROMOTED TO STAGING! 🚀"
+                            env.MODEL_PROMOTED_TO_STAGING = "true"
+                        else
+                            echo "🛑 Model not better or failed internal comparison criteria. Promotion to Staging skipped."
+                            env.MODEL_PROMOTED_TO_STAGING = "false"
+                        fi
+                    """
+                    archiveArtifacts artifacts: 'comparison_result.log', followSymlinks: false, allowEmptyArchive: true
+                }
+            }
+        }
+
+        stage('Manual Approval for Production') {
+            // This stage only runs if a model was promoted to Staging
+            when { expression { return env.MODEL_PROMOTED_TO_STAGING == 'true' } }
+            steps {
+                timeout(time: 24, unit: 'HOURS') { // Timeout for manual approval
+                    input message: "Approve Model '${env.MODEL_NAME}' (Run ID: ${env.TRAINING_RUN_ID}) deployment to Production?", ok: 'Deploy'
+                }
+                echo '✅ Manual approval granted for Production deployment.'
+            }
+        }
+
+        stage('Deploy to Production') {
+            // This stage only runs if a model was promoted to Staging AND manually approved
+            when { expression { return env.MODEL_PROMOTED_TO_STAGING == 'true' } }
+            steps {
+                script {
+                    echo "Deploying approved model '${env.MODEL_NAME}' from Staging to Production..."
+                    # The `promote_and_deploy.py` script orchestrates the transition in MLflow Registry
+                    # and then calls `deploy.py` to copy the ONNX model to the server directory.
+                    sh """
+                        #!/bin/bash
+                        set -e
+                        export MLFLOW_TRACKING_URI="${env.MLFLOW_TRACKING_URI}"
+
+                        python3 mlops/scripts/promote_and_deploy.py \
+                            --model_name "${env.MODEL_NAME}" \
+                            | tee promote_deploy_output.log
+
+                        PROMOTE_DEPLOY_EXIT_CODE=${PIPESTATUS[0]}
+
+                        if [ $PROMOTE_DEPLOY_EXIT_CODE -ne 0 ]; then
+                            echo "ERROR: Production promotion/deployment failed with exit code $PROMOTE_DEPLOY_EXIT_CODE."
+                            cat promote_deploy_output.log
+                            exit $PROMOTE_DEPLOY_EXIT_CODE
+                        fi
+                        echo "✅ Model successfully promoted to Production and deployed."
+                    """
+                    archiveArtifacts artifacts: 'promote_deploy_output.log', followSymlinks: false, allowEmptyArchive: true
+                }
             }
         }
     }
 
     post {
         always {
-            echo 'Archiving artifacts...'
+            echo 'Archiving all relevant artifacts...'
             archiveArtifacts artifacts: '''
                 mlruns/**,
                 runs/**/*.pt,
@@ -199,22 +396,27 @@ else:
                 runs/**/*.png,
                 runs/**/*.csv,
                 training_output.log,
-                comparison_result.txt
+                comparison_result.log,
+                model_test_report.log,
+                model_test_report.json,
+                data_drift_report.html,
+                data_drift_output.log,
+                promote_deploy_output.log
             ''', followSymlinks: false, allowEmptyArchive: true
             
-            // Afficher un résumé
-            sh '''
-                if [ -f training_output.log ]; then
-                    echo "=== Training Duration ==="
-                    grep "real" training_output.log || echo "Duration not found"
-                fi
-            '''
+            echo 'Cleaning up temporary MLflow download directory if it exists...'
+            sh 'rm -rf mlflow_model_for_test || true' # '|| true' prevents failure if dir doesn't exist
+            
+            echo '--- Pipeline Finished ---'
         }
         success {
             echo '✅ Pipeline completed successfully!'
         }
         failure {
             echo '❌ Pipeline failed. Check logs for details.'
+        }
+        unstable {
+            echo '⚠️ Pipeline completed with some warnings/unstable results.'
         }
     }
 }
