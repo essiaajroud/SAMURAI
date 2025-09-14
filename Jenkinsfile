@@ -65,7 +65,6 @@ pipeline {
                         bash \
                         curl # Added curl for potential dvc remote needs if it uses HTTPS
                     
-                    # Ensure /bin/sh points to bash for consistent script execution
                     ln -sf /bin/bash /bin/sh
                 '''
                 
@@ -82,8 +81,7 @@ pipeline {
                 echo 'Checking hardware configuration and Python environment...'
                 sh '''
                     echo "=== GPU Check ==="
-                    # `nvidia-smi` might not be in PATH inside the container by default.
-                    # Try common locations, or just run it and let it fail if not found.
+                   
                     if command -v nvidia-smi &> /dev/null; then
                         nvidia-smi || echo "No GPU detected or nvidia-smi failed to execute (permissions?)."
                     else
@@ -108,8 +106,7 @@ pipeline {
                 sh '''
                     python3 -m pip install --upgrade pip
                     
-                    # Détection automatique GPU/CPU pour PyTorch
-                    # Utiliser une vérification plus robuste pour CUDA
+                    
                     if python3 -c "import torch; print(torch.cuda.is_available())" | grep -q "True"; then
                         echo "Installing PyTorch with CUDA support..."
                         pip3 install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu121
@@ -118,10 +115,8 @@ pipeline {
                         pip3 install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cpu
                     fi
                     
-                    # Installer les autres dépendances
                     pip3 install -r server/requirements-ci.txt
                     
-                    # Installer Evidently AI pour la détection de dérive de données
                     pip3 install evidently
                 '''
                 
@@ -177,7 +172,6 @@ pipeline {
                             echo "WARNING: Training on CPU will be significantly slower!"
                         fi
 
-                        # --- COMMANDES DE DÉBOGAGE ---
                         echo "--- Début du débogage des chemins ---"
                         echo "1. Répertoire de travail actuel (pwd) :"
                         pwd
@@ -194,8 +188,7 @@ pipeline {
                         echo "--- Fin du débogage ---"
 
                         echo "--- Starting training with MLflow logging ---"
-                        # The `mlops/scripts/train.py` script should implicitly use MLflow.
-                        # `time` command measures execution time. `tee` logs to file and stdout.
+                       
                         time python3 mlops/scripts/train.py \
                             --epochs 2 \
                             --batch $BATCH_SIZE \
@@ -214,7 +207,6 @@ pipeline {
                         fi
 
                         echo "--- Extracting MLflow Run ID from training logs ---"
-                        # Extract the MLflow Run ID, assuming it's printed in 'training_output.log'
                         RUN_ID_FROM_LOG=$(grep 'MLflow Run ID:' training_output.log | head -1 | sed 's/.*MLflow Run ID: //')
                         
                         if [ -z "$RUN_ID_FROM_LOG" ]; then
@@ -289,7 +281,6 @@ pipeline {
                         set -e
                         export MLFLOW_TRACKING_URI="${env.MLFLOW_TRACKING_URI}"
 
-                        # Run the data drift detection script
                         python3 mlops/scripts/detect_data_drift.py \
                             --reference_data_path "${env.DATA_YAML_PATH}" \
                             --production_data_path "${env.PRODUCTION_INFERENCE_DATA_PATH}" \
@@ -329,7 +320,6 @@ pipeline {
                         export MLFLOW_TRACKING_URI="${env.MLFLOW_TRACKING_URI}"
                         
                         echo "--- Running compare_models.py ---"
-                        # The script outputs "true" if promoted, "false" otherwise.
                         python3 mlops/scripts/compare_models.py \
                             --run_id "${env.TRAINING_RUN_ID}" \
                             --model_name "${env.MODEL_NAME}" \
@@ -343,7 +333,6 @@ pipeline {
                             exit $COMPARE_EXIT_CODE
                         fi
                         
-                        # Extract the last line of the output, which should be 'true' or 'false'
                         IS_PROMOTED=$(tail -n 1 comparison_result.log | tr -d '[:space:]')
                         
                         if [ "$IS_PROMOTED" = "true" ]; then
@@ -376,8 +365,8 @@ pipeline {
             steps {
                 script {
                     echo "Deploying approved model '${env.MODEL_NAME}' from Staging to Production..."
-                    # The `promote_and_deploy.py` script orchestrates the transition in MLflow Registry
-                    # and then calls `deploy.py` to copy the ONNX model to the server directory.
+                    //The `promote_and_deploy.py` script orchestrates the transition in MLflow Registry
+                    // and then calls `deploy.py` to copy the ONNX model to the server directory.
                     sh '''
                         #!/bin/bash
                         set -e
