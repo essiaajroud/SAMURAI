@@ -222,7 +222,7 @@ pipeline {
                     }
 
                     echo "--- Downloading best.pt model artifact from MLflow Run ID: ${env.TRAINING_RUN_ID} ---"
-                    # Configure MLflow client to download the model
+                     //Configure MLflow client to download the model
                     sh """
                         #!/bin/bash
                         set -e
