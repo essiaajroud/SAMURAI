@@ -146,12 +146,12 @@ pipeline {
             steps {
                 echo 'Pulling data from DVC remote...'
                 // Configure DVC for Azure Blob Storage
-                sh """
+                sh '''
                     dvc remote modify myremote azure_account_name "${env.AZURE_STORAGE_ACCOUNT}"
                     dvc remote modify myremote azure_account_key "${env.AZURE_STORAGE_KEY}"
                     dvc remote modify myremote url "${env.DVC_REMOTE_URL}"
                     dvc pull -r myremote
-                """
+                '''
                 sh 'ls -l ${DATA_YAML_PATH} || echo "WARNING: ${DATA_YAML_PATH} not found after DVC pull!"'
             }
         }
@@ -162,10 +162,10 @@ pipeline {
                     echo 'Running optimized model training...'
                     sh '''
                         #!/bin/bash
-                        set -e # Exit immediately if a command exits with a non-zero status
+                        set -e 
 
                         echo "--- Detecting optimal device for training ---"
-                        # Use Python to check CUDA availability
+                        
                         if python3 -c "import torch; exit(0 if torch.cuda.is_available() else 1)"; then
                             DEVICE="cuda:0"
                             BATCH_SIZE=16  # Larger batch size for GPU
@@ -176,6 +176,22 @@ pipeline {
                             echo "⚠️ No GPU detected - using device: $DEVICE with batch size: $BATCH_SIZE"
                             echo "WARNING: Training on CPU will be significantly slower!"
                         fi
+
+                        # --- COMMANDES DE DÉBOGAGE ---
+                        echo "--- Début du débogage des chemins ---"
+                        echo "1. Répertoire de travail actuel (pwd) :"
+                        pwd
+
+                        echo "2. Contenu du répertoire de travail (ls -la) :"
+                        ls -la
+
+                        echo "3. Vérification de l'existence du chemin relatif :"
+                        if [ -f "mlops/scripts/train.py" ]; then
+                            echo "✅ SUCCÈS: Le fichier 'mlops/scripts/train.py' a été trouvé avec un chemin relatif."
+                        else
+                            echo "❌ ÉCHEC: Le fichier 'mlops/scripts/train.py' est INTROUVABLE avec un chemin relatif."
+                        fi
+                        echo "--- Fin du débogage ---"
 
                         echo "--- Starting training with MLflow logging ---"
                         # The `mlops/scripts/train.py` script should implicitly use MLflow.
@@ -223,7 +239,7 @@ pipeline {
 
                     echo "--- Downloading best.pt model artifact from MLflow Run ID: ${env.TRAINING_RUN_ID} ---"
                      //Configure MLflow client to download the model
-                    sh """
+                    sh '''
                         #!/bin/bash
                         set -e
                         export MLFLOW_TRACKING_URI="${env.MLFLOW_TRACKING_URI}"
@@ -254,7 +270,7 @@ pipeline {
                             exit $TEST_SCRIPT_EXIT_CODE
                         fi
                         echo "✅ Comprehensive model tests PASSED."
-                    """
+                    '''
                     archiveArtifacts artifacts: 'model_test_report.log, model_test_report.json', followSymlinks: false, allowEmptyArchive: true
                 }
             }
@@ -268,7 +284,7 @@ pipeline {
                     // It needs the path to the training data (reference) and a path to some "production-like" data.
                     // Assuming `PRODUCTION_INFERENCE_DATA_PATH` contains images.
 
-                    sh """
+                    sh '''
                         #!/bin/bash
                         set -e
                         export MLFLOW_TRACKING_URI="${env.MLFLOW_TRACKING_URI}"
@@ -292,7 +308,7 @@ pipeline {
                             # exit $DRIFT_EXIT_CODE
                         fi
                         echo "✅ Data drift detection completed. Check data_drift_report.html for details."
-                    """
+                    '''
                     archiveArtifacts artifacts: 'data_drift_report.html, data_drift_output.log', followSymlinks: false, allowEmptyArchive: true
                 }
             }
@@ -307,7 +323,7 @@ pipeline {
                         exit 1
                     }
 
-                    sh """
+                    sh '''
                         #!/bin/bash
                         set -e
                         export MLFLOW_TRACKING_URI="${env.MLFLOW_TRACKING_URI}"
@@ -337,7 +353,7 @@ pipeline {
                             echo "🛑 Model not better or failed internal comparison criteria. Promotion to Staging skipped."
                             env.MODEL_PROMOTED_TO_STAGING = "false"
                         fi
-                    """
+                    '''
                     archiveArtifacts artifacts: 'comparison_result.log', followSymlinks: false, allowEmptyArchive: true
                 }
             }
@@ -362,7 +378,7 @@ pipeline {
                     echo "Deploying approved model '${env.MODEL_NAME}' from Staging to Production..."
                     # The `promote_and_deploy.py` script orchestrates the transition in MLflow Registry
                     # and then calls `deploy.py` to copy the ONNX model to the server directory.
-                    sh """
+                    sh '''
                         #!/bin/bash
                         set -e
                         export MLFLOW_TRACKING_URI="${env.MLFLOW_TRACKING_URI}"
@@ -379,7 +395,7 @@ pipeline {
                             exit $PROMOTE_DEPLOY_EXIT_CODE
                         fi
                         echo "✅ Model successfully promoted to Production and deployed."
-                    """
+                    '''
                     archiveArtifacts artifacts: 'promote_deploy_output.log', followSymlinks: false, allowEmptyArchive: true
                 }
             }
