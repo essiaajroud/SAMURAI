@@ -46,17 +46,19 @@ def verify_and_fix_dataset_structure(base_path, split='train'):
             print(f"Suppression de fichier non pertinent dans labels : {file_path}")
             os.remove(file_path)
 
-def check_images_and_labels(image_folder, label_folder):
+def check_images_and_labels(image_folder, label_folder, delete_id_gt6=False):
     """
     Vérifie l'intégrité des images et des annotations :
     - Vérifie que chaque image a un fichier .txt correspondant et vice versa.
     - Vérifie que les images ne sont pas corrompues.
     - Vérifie que les annotations sont valides (format YOLO, valeurs normalisées).
     - Supprime les fichiers orphelins (image sans .txt ou .txt sans image).
+    - Si delete_id_gt6=True, supprime les fichiers dont une annotation a un id > 6.
     
     Args:
         image_folder (str): Chemin vers le dossier des images.
         label_folder (str): Chemin vers le dossier des annotations.
+        delete_id_gt6 (bool): Supprimer les fichiers dont une annotation a un id > 6.
     """
     image_extensions = ('.jpg', '.jpeg', '.png', '.bmp')
 
@@ -101,6 +103,7 @@ def check_images_and_labels(image_folder, label_folder):
                     os.remove(label_path)
                     os.remove(img_path)
                     continue
+                delete_for_id_gt6 = False
                 for line in lines:
                     parts = line.strip().split()
                     if len(parts) != 5:  # Format YOLO : class_id x_center y_center width height
@@ -108,28 +111,35 @@ def check_images_and_labels(image_folder, label_folder):
                     class_id, x, y, w, h = map(float, parts)
                     if not (0 <= x <= 1 and 0 <= y <= 1 and 0 <= w <= 1 and 0 <= h <= 1):
                         raise ValueError(f"Valeurs hors limites : {line}")
+                    if delete_id_gt6 and class_id > 6:
+                        delete_for_id_gt6 = True
+                if delete_for_id_gt6:
+                    print(f"Suppression (id > 6) : {label_path} et {img_path}")
+                    os.remove(label_path)
+                    os.remove(img_path)
         except Exception as e:
             print(f"Annotation invalide, suppression : {label_path} et {img_path}, erreur : {e}")
             os.remove(label_path)
             os.remove(img_path)
 
-def clean_dataset(base_path):
+def clean_dataset(base_path, delete_id_gt6=False):
     """
     Nettoie le dataset pour tous les splits (train, val, test).
     
     Args:
         base_path (str): Chemin de base du dataset .
+        delete_id_gt6 (bool): Supprimer les fichiers dont une annotation a un id > 6.
     """
-    for split in ['train', 'valid', 'test']:
+    for split in ['train', 'valid']:
         print(f"\n--- Nettoyage du split : {split} ---")
         # Vérifier et corriger la structure
         verify_and_fix_dataset_structure(base_path, split)
         # Vérifier l'intégrité des images et annotations
         image_folder = os.path.join(base_path, split, 'images')
         label_folder = os.path.join(base_path, split, 'labels')
-        check_images_and_labels(image_folder, label_folder)
+        check_images_and_labels(image_folder, label_folder, delete_id_gt6=delete_id_gt6)
         print(f"Nettoyage terminé pour {split}.")
 
 # Exemple d'utilisation
-base_path = 'D:/samurai'
-clean_dataset(base_path)
+base_path = 'C:/Users/rteen/Desktop/mini_dataset'
+clean_dataset(base_path, delete_id_gt6=True)

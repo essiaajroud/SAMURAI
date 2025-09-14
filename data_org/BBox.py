@@ -4,8 +4,8 @@ import yaml
 from pathlib import Path
 
 # Configuration
-base_dir = 'D:/samurai'
-splits = ['train', 'valid', 'test']  # Traiter tous les dossiers
+base_dir = 'C:/Users/rteen/Desktop/mini_dataset'
+splits = ['train', 'valid']  # Traiter tous les dossiers
 yaml_path = os.path.join(base_dir, 'data.yaml')
 output_base_dir = 'D:/dataset_anno'
 

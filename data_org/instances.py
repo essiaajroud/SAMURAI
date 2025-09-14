@@ -2,7 +2,7 @@ import os
 from collections import defaultdict
 
 # Chemin vers le dossier des annotations d'entraînement
-label_dir = "D:/samurai/train/labels"
+label_dir = "C:/Users/rteen/Desktop/mini_dataset/train/labels"
 class_names = ["soldier", "person", "weapon", "civilian_vehicles", "military_vehicles", "military_aircraft", "civilian_aircraft"]
 
 # Compteur pour les images et les instances par classe
