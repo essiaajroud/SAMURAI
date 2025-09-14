@@ -38,3 +38,4 @@ credentials.json
 
 *.cache
 
+jenkins\jenkins-backup.tar
