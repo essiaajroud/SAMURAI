@@ -21,7 +21,7 @@ pipeline {
 
     environment {
         // Variables d'environnement Jenkins. Utilisez 'credentials' pour les secrets.
-        AZURE_CONNECTION_STRING = credentials('dvc-azure-connection-string')
+        AZURE_CONNECTION_STRING = credentials('azure-storage-connection-string')
 
         DVC_REMOTE_URL = 'azure://samuraidatastore/samurai-data'
         
