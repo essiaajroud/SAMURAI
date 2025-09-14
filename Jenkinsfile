@@ -21,10 +21,9 @@ pipeline {
 
     environment {
         // Variables d'environnement Jenkins. Utilisez 'credentials' pour les secrets.
-        AZURE_STORAGE_ACCOUNT = credentials('azure-storage-account-name') // Example: 'mystorageaccount'
-        AZURE_STORAGE_KEY = credentials('azure-storage-key') // Example: The access key for your storage account
+        AZURE_CONNECTION_STRING = credentials('dvc-azure-connection-string')
 
-        DVC_REMOTE_URL = 'azure://samuraidatastore/samurai-data' // Remplacez par votre URL DVC Azure Blob Storage
+        DVC_REMOTE_URL = 'azure://samuraidatastore/samurai-data'
         
         // MLflow Tracking URI local (fichier)
         MLFLOW_TRACKING_URI = "file://${workspace}/mlruns"
@@ -142,8 +141,9 @@ pipeline {
                 echo 'Pulling data from DVC remote...'
                 // Configure DVC for Azure Blob Storage
                 sh '''
-                    dvc remote modify myremote azure_account_name "${env.AZURE_STORAGE_ACCOUNT}"
-                    dvc remote modify myremote azure_account_key "${env.AZURE_STORAGE_KEY}"
+                    set -e
+                    echo "Configuring DVC remote 'myremote'..."
+                    dvc remote modify myremote connection_string "${env.AZURE_CONNECTION_STRING}"
                     dvc remote modify myremote url "${env.DVC_REMOTE_URL}"
                     dvc pull -r myremote
                 '''
