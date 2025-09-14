@@ -264,9 +264,9 @@ pipeline {
             steps {
                 script {
                     echo 'Collecting production inference data and checking for drift using Evidently AI...'
-                    # The `detect_data_drift.py` script will handle its own MLflow logging.
-                    # It needs the path to the training data (reference) and a path to some "production-like" data.
-                    # Assuming `PRODUCTION_INFERENCE_DATA_PATH` contains images.
+                    // The `detect_data_drift.py` script will handle its own MLflow logging.
+                    // It needs the path to the training data (reference) and a path to some "production-like" data.
+                    // Assuming `PRODUCTION_INFERENCE_DATA_PATH` contains images.
 
                     sh """
                         #!/bin/bash
