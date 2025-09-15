@@ -78,25 +78,34 @@ def train(args):
 
         # --- 4. Entraînement du Modèle ---
         print("\n--- Step 4: Starting model training ---")
-        model = YOLO(model_path_arg) 
+        try:
+            model = YOLO(model_path_arg) 
 
-        results = model.train(
-            data=data_yaml_path,
-            epochs=epochs,
-            imgsz=640,
-            batch=batch_size,
-            device=device,
-            lr0=args.lr0,
-            name=f'{os.path.basename(model_path_arg).replace(".pt","")}_run_{run_id}',
-            degrees=args.degrees,
-            translate=args.translate,
-            scale=args.scale,
-            flipud=args.flipud,
-            mosaic=args.mosaic,
-            val=True,
-            workers=args.workers,
-        )
-        print("Training finished.")
+            # On lance l'entraînement
+            results = model.train(
+                data=data_yaml_path,
+                epochs=epochs,
+                imgsz=640,
+                batch=batch_size,
+                device=device,
+                lr0=args.lr0,
+                name=f'{os.path.basename(model_path_arg).replace(".pt","")}_run_{run_id}',
+                degrees=args.degrees,
+                translate=args.translate,
+                scale=args.scale,
+                flipud=args.flipud,
+                mosaic=args.mosaic,
+                val=True,
+                workers=args.workers
+            )
+            print("Training finished successfully.")
+
+        except Exception as e:
+             print(f"\nFATAL ERROR: An exception occurred during the training process.")
+             import traceback
+             traceback.print_exc()
+             import sys
+             sys.exit(1)
 
         # --- 5. Log des Métriques ---
         print("\n--- Step 5: Logging performance metrics ---")
@@ -140,7 +149,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=50, help='Number of training epochs.')
     parser.add_argument('--batch', type=int, default=8, help='Batch size for training.')
     parser.add_argument('--data', type=str, required=True, help='Path to the data.yaml file.')
-    parser.add_argument('--model', type=str, default='yolov8s', help='Base YOLO model: name (e.g., yolov11m) or path to a local .pt file.')
+    parser.add_argument('--model', type=str, default='yolov11n', help='Base YOLO model: name (e.g., yolov11m) or path to a local .pt file.')
     parser.add_argument('--lr', type=float, default=0.01, dest='lr0', help='Initial learning rate (e.g., 0.01).')
     parser.add_argument('--device', type=str, default='cuda:0', help="Device to run on, e.g., 'cpu' or 'cuda:0'")
     # Arguments d'augmentation de données

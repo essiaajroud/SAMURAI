@@ -146,6 +146,27 @@ pipeline {
                 echo "Pulling data with DVC..."
                 dvc pull -r myremote
             '''
+
+            echo "--- Verifying DVC pull results ---"
+            sh '''
+                # Vérifier si le modèle de base existe
+                if [ -f "server/models/best.pt" ]; then
+                    echo "✅ SUCCESS: Base model server/models/best.pt found after dvc pull."
+                else
+                    echo "❌ FAILURE: Base model server/models/best.pt NOT FOUND after dvc pull. This is the root cause of the error."
+                    exit 1
+                fi
+
+                # Vérifier si le fichier de configuration des données existe
+                if [ -f "${DATA_YAML_PATH}" ]; then
+                    echo "✅ SUCCESS: Data YAML ${DATA_YAML_PATH} found."
+                    echo "--- Contents of data.yaml: ---"
+                    cat "${DATA_YAML_PATH}"
+                else
+                    echo "❌ FAILURE: Data YAML ${DATA_YAML_PATH} NOT FOUND."
+                    exit 1
+                fi
+            '''
         }
         
         // Cette commande est maintenant CORRECTEMENT PLACÉE à l'intérieur du bloc 'steps'
@@ -195,7 +216,7 @@ pipeline {
                             --epochs 2 \
                             --batch $BATCH_SIZE \
                             --data ${DATA_YAML_PATH} \
-                            --model yolov11s.pt \
+                            --model server/models/best.pt \
                             --device $DEVICE \
                             --workers 4 \
                             | tee training_output.log
