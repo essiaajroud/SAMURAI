@@ -127,17 +127,18 @@ pipeline {
         stage('Pull Data (DVC)') {
             steps {
                 echo 'Pulling data from DVC remote...'
-                sh ''' // <-- GUILLEMETS SIMPLES : PAS DE SUBSTITUTION
+                sh """ // <-- GUILLEMETS DOUBLES : SUBSTITUTION ACTIVÉE
                     set -e
                     echo "Configuring DVC remote 'myremote'..."
                     
+                    # Groovy va remplacer la variable ci-dessous par sa valeur avant d'exécuter le script
                     dvc remote modify myremote connection_string "${env.AZURE_CONNECTION_STRING}"
                     
                     dvc remote modify myremote url "${env.DVC_REMOTE_URL}"
                     
                     echo "Pulling data with DVC..."
                     dvc pull -r myremote
-                '''
+                """
                 sh 'ls -l ${DATA_YAML_PATH} || echo "WARNING: ${DATA_YAML_PATH} not found after DVC pull!"'
             }
         }
