@@ -125,32 +125,33 @@ pipeline {
         }
 
         stage('Pull Data (DVC)') {
-            steps {
-                echo 'Pulling data from DVC remote...'
+    steps {
+        // Le bloc withCredentials est la méthode sécurisée pour manipuler des secrets.
+        withCredentials([string(credentialsId: 'azure-storage-connection-string', variable: 'DVC_CONN_STRING')]) {
+            // 'credentialsId': L'ID de votre secret dans Jenkins (assurez-vous qu'il correspond).
+            // 'variable': Le nom de la variable d'environnement que Jenkins va créer pour nous.
             
-            // Maintenant, on utilise des guillemets simples, car on n'a plus besoin
-            // que Groovy interpole la variable. C'est le shell qui va la lire.
+            echo 'Configuring DVC remote and pulling data...'
+            
             sh '''
                 #!/bin/bash
-                set -e # Utiliser un shebang et set -e est une bonne pratique
+                set -e
 
                 # Ce commentaire est correct car il utilise '#'
                 echo "Configuring DVC remote 'myremote'..."
                 
                 # On utilise la variable $DVC_CONN_STRING qui a été injectée de manière sécurisée.
-                # Notez que c'est $DVC_CONN_STRING, pas ${env.AZURE_CONNECTION_STRING}
                 dvc remote modify myremote connection_string "$DVC_CONN_STRING"
-                
-                # On n'a pas besoin de re-modifier l'URL si elle est déjà dans .dvc/config
-                # dvc remote modify myremote url "${env.DVC_REMOTE_URL}"
                 
                 echo "Pulling data with DVC..."
                 dvc pull -r myremote
             '''
         }
+        
+        // Cette commande est maintenant CORRECTEMENT PLACÉE à l'intérieur du bloc 'steps'
         sh 'ls -l ${DATA_YAML_PATH} || echo "WARNING: ${DATA_YAML_PATH} not found after DVC pull!"'
-            }
-        }
+    }
+}
 
         stage('Train Model') {
             steps {
@@ -393,43 +394,44 @@ pipeline {
     }
 
     post {
-    always {
-        script {
-            echo 'Archiving all relevant artifacts...'
-            archiveArtifacts artifacts: '''
-                mlruns/**,
-                runs/**/*.pt,
-                runs/**/*.onnx,
-                runs/**/*.png,
-                runs/**/*.csv,
-                training_output.log,
-                comparison_result.log,
-                model_test_report.log,
-                model_test_report.json,
-                data_drift_report.html,
-                data_drift_output.log,
-                promote_deploy_output.log
-            ''', followSymlinks: false, allowEmptyArchive: true
-            
-            echo 'Cleaning up temporary MLflow download directory if it exists...'
-            sh 'rm -rf mlflow_model_for_test || true'
-            
-            echo '--- Pipeline Finished ---'
+        always {
+            script {
+                echo 'Archiving all relevant artifacts...'
+                archiveArtifacts artifacts: '''
+                    mlruns/**,
+                    runs/**/*.pt,
+                    runs/**/*.onnx,
+                    runs/**/*.png,
+                    runs/**/*.csv,
+                    training_output.log,
+                    comparison_result.log,
+                    model_test_report.log,
+                    model_test_report.json,
+                    data_drift_report.html,
+                    data_drift_output.log,
+                    promote_deploy_output.log
+                ''', followSymlinks: false, allowEmptyArchive: true
+                
+                echo 'Cleaning up temporary MLflow download directory if it exists...'
+                sh 'rm -rf mlflow_model_for_test || true'
+                
+                echo '--- Pipeline Finished ---'
+            }
+        }
+        success {
+            script {
+                echo '✅ Pipeline completed successfully!'
+            }
+        }
+        failure {
+            script {
+                echo '❌ Pipeline failed. Check logs for details.'
+            }
+        }
+        unstable {
+            script {
+                echo '⚠️ Pipeline completed with some warnings/unstable results.'
+            }
         }
     }
-    success {
-        script {
-            echo '✅ Pipeline completed successfully!'
-        }
-    }
-    failure {
-        script {
-            echo '❌ Pipeline failed. Check logs for details.'
-        }
-    }
-    unstable {
-        script {
-            echo '⚠️ Pipeline completed with some warnings/unstable results.'
-        }
-    }
-}
+
