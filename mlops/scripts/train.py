@@ -149,6 +149,8 @@ if __name__ == '__main__':
     parser.add_argument('--flipud', type=float, default=0.0, help='Image flip up-down (probability).')
     parser.add_argument('--mosaic', type=float, default=1.0, help='Use mosaic data augmentation (probability).')
 
+    parser.add_argument('--workers', type=int, default=4, help='nombre de workers pour le chargement des données')
+    
     args = parser.parse_args()
     
     # Passer l'objet 'args' en entier pour que la fonction ait accès aux paramètres d'augmentation
