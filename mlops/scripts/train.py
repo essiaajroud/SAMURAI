@@ -94,6 +94,7 @@ def train(args):
             flipud=args.flipud,
             mosaic=args.mosaic,
             val=True,
+            workers=args.workers,
         )
         print("Training finished.")
 
