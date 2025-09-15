@@ -127,12 +127,15 @@ pipeline {
         stage('Pull Data (DVC)') {
             steps {
                 echo 'Pulling data from DVC remote...'
-                // Configure DVC for Azure Blob Storage
-                sh '''
+                sh ''' // <-- GUILLEMETS SIMPLES : PAS DE SUBSTITUTION
                     set -e
                     echo "Configuring DVC remote 'myremote'..."
+                    
                     dvc remote modify myremote connection_string "${env.AZURE_CONNECTION_STRING}"
+                    
                     dvc remote modify myremote url "${env.DVC_REMOTE_URL}"
+                    
+                    echo "Pulling data with DVC..."
                     dvc pull -r myremote
                 '''
                 sh 'ls -l ${DATA_YAML_PATH} || echo "WARNING: ${DATA_YAML_PATH} not found after DVC pull!"'
