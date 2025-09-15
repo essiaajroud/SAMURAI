@@ -120,7 +120,7 @@ pipeline {
                 '''
                 
                 echo 'Verifying PyTorch installation...'
-                sh 'python3 scripts/check_env.py'
+                sh 'python3 mlops/scripts/check_env.py'
             }
         }
 
