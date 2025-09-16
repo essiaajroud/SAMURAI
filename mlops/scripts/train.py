@@ -109,14 +109,34 @@ def train(args):
 
         # --- 5. Log des Métriques ---
         print("\n--- Step 5: Logging performance metrics ---")
-        final_map50_95 = results.metrics.box.map    
-        final_map50 = results.metrics.box.map50
-        
-        mlflow.log_metrics({
-            "mAP50-95": final_map50_95,
-            "mAP50": final_map50,
-        })
-        print(f"Metrics logged: mAP50-95={final_map50_95:.4f}, mAP50={final_map50:.4f}")
+
+        # --- AJOUT DE DÉBOGAGE ---
+        # Affichez le contenu de l'objet results pour voir ce qui est disponible
+        print(f"DEBUG: Type of results object: {type(results)}")
+        # Affichez les clés disponibles dans les métriques, si elles existent
+        if hasattr(results, 'metrics') and results.metrics:
+            print(f"DEBUG: Available metrics keys: {results.metrics.keys()}")
+        else:
+            print("DEBUG: results.metrics is empty or does not exist.")
+        # --- FIN DU DÉBOGAGE ---
+
+        # --- AJOUT DE ROBUSTESSE ---
+        # Vérifiez que l'objet metrics et l'attribut box existent avant d'y accéder
+        if hasattr(results, 'metrics') and results.metrics and hasattr(results.metrics, 'box'):
+            final_map50_95 = results.metrics.box.map    
+            final_map50 = results.metrics.box.map50
+            
+            mlflow.log_metrics({
+                "mAP50-95": final_map50_95,
+                "mAP50": final_map50,
+            })
+            print(f"Metrics logged: mAP50-95={final_map50_95:.4f}, mAP50={final_map50:.4f}")
+        else:
+            print("[WARNING] No validation metrics found in results. Skipping metrics logging.")
+            print("[INFO] This usually happens if the validation dataset is empty or not configured correctly in data.yaml.")
+            # On pourrait décider de ne pas faire échouer le script ici, 
+            # car l'entraînement a réussi. C'est un choix de conception.
+            # Pour l'instant, on continue pour que le reste du script s'exécute.
 
         # --- 6. Log des Artefacts ---
         print("\n--- Step 6: Logging artifacts (models and charts) ---")
