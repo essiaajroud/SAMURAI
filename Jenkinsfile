@@ -105,17 +105,20 @@ pipeline {
                 sh '''
                     python3 -m pip install --upgrade pip
                     
-                    
-                    if python3 -c "import torch; print(torch.cuda.is_available())" | grep -q "True"; then
-                        echo "Installing PyTorch with CUDA support..."
-                        pip3 install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu121
+                    # Détection robuste de CUDA en se basant sur la présence de nvidia-smi
+                    if command -v nvidia-smi &> /dev/null; then
+                        echo "✅ nvidia-smi found. Installing PyTorch with CUDA support..."
+                        # Assurez-vous que la version de cuDNN dans l'URL correspond à votre image Docker
+                        # Votre image est cuda:11.8.0-cudnn8, donc cu118 serait idéal.
+                        # cu121 pourrait fonctionner mais cu118 est plus sûr.
+                        pip3 install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu118
                     else
-                        echo "Installing PyTorch CPU version..."
+                        echo "⚠️ nvidia-smi not found. Installing PyTorch CPU version..."
                         pip3 install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cpu
                     fi
                     
+                    # Installer les autres dépendances
                     pip3 install -r server/requirements-ci.txt
-                    
                     pip3 install evidently
                 '''
                 
