@@ -216,7 +216,7 @@ pipeline {
                         echo "--- Starting training with MLflow logging ---"
                        
                         time python3 mlops/scripts/train.py \
-                            --epochs 2 \
+                            --epochs 1 \
                             --batch $BATCH_SIZE \
                             --data ${DATA_YAML_PATH} \
                             --model server/models/best.pt \
