@@ -112,7 +112,7 @@ def load_model():
     
     try:
         data = request.json
-        model_path = data.get('model_path', 'models/best.onnx')
+        model_path = data.get('model_path', 'models/best2.onnx')
         confidence = data.get('confidence', 0.5)
         
         detector.model_path = model_path

@@ -153,10 +153,10 @@ pipeline {
             echo "--- Verifying DVC pull results ---"
             sh '''
                 # Vérifier si le modèle de base existe
-                if [ -f "server/models/best.pt" ]; then
-                    echo "✅ SUCCESS: Base model server/models/best.pt found after dvc pull."
+                if [ -f "server/models/best2.pt" ]; then
+                    echo "✅ SUCCESS: Base model server/models/best2.pt found after dvc pull."
                 else
-                    echo "❌ FAILURE: Base model server/models/best.pt NOT FOUND after dvc pull. This is the root cause of the error."
+                    echo "❌ FAILURE: Base model server/models/best2.pt NOT FOUND after dvc pull. This is the root cause of the error."
                     exit 1
                 fi
 
@@ -219,7 +219,7 @@ pipeline {
                             --epochs 1 \
                             --batch $BATCH_SIZE \
                             --data ${DATA_YAML_PATH} \
-                            --model server/models/best.pt \
+                            --model server/models/best2.pt \
                             --device $DEVICE \
                             --workers 4 \
                             | tee training_output.log
@@ -255,7 +255,7 @@ pipeline {
                         exit 1
                     }
 
-                    echo "--- Downloading best.pt model artifact from MLflow Run ID: ${env.TRAINING_RUN_ID} ---"
+                    echo "--- Downloading best2.pt model artifact from MLflow Run ID: ${env.TRAINING_RUN_ID} ---"
                      //Configure MLflow client to download the model
                     sh '''
                         #!/bin/bash
@@ -267,9 +267,9 @@ pipeline {
 
                         mlflow artifacts download --run-id "${env.TRAINING_RUN_ID}" --artifact-path "best_model_pt" --dst-path "\${MLFLOW_DOWNLOAD_DIR}"
                         
-                        MODEL_TO_TEST_PATH="\${MLFLOW_DOWNLOAD_DIR}/best_model_pt/best.pt"
+                        MODEL_TO_TEST_PATH="\${MLFLOW_DOWNLOAD_DIR}/best_model_pt/best2.pt"
                         if [ ! -f "\${MODEL_TO_TEST_PATH}" ]; then
-                            echo "ERROR: best.pt model artifact not found at \${MODEL_TO_TEST_PATH} after download."
+                            echo "ERROR: best2.pt model artifact not found at \${MODEL_TO_TEST_PATH} after download."
                             exit 1
                         fi
                         echo "Model downloaded for testing: \${MODEL_TO_TEST_PATH}"

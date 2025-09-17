@@ -25,7 +25,7 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # YOLO configuration
-    YOLO_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'best.onnx')
+    YOLO_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'best2.onnx')
     YOLO_CONFIDENCE_THRESHOLD = 0.5
     
 
